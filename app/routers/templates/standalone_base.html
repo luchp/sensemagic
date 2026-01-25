@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SenseMagic{% endblock %}</title>
+
+    <!-- External CSS -->
+    <link rel="stylesheet" href="/static/css/base.css">
+    <link rel="stylesheet" href="/static/css/standalone.css">
+    {% block extra_css %}{% endblock %}
+
+    <style>
+        /* Page-specific max-width override */
+        body {
+            max-width: {% block max_width %}1200px{% endblock %};
+        }
+        {% block extra_style %}{% endblock %}
+    </style>
+
+    {% if standalone %}
+    <!-- MathJax for LaTeX rendering in standalone mode -->
+    <script>
+    window.MathJax = {
+        tex: {
+            inlineMath: [['$', '$'], ['\\(', '\\)']],
+            displayMath: [['$$', '$$'], ['\\[', '\\]']],
+            processEscapes: true,
+            processEnvironments: true
+        },
+        options: {
+            skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+        }
+    };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+    {% endif %}
+
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    {% if standalone %}
+    <div class="logo-container">
+        <a href="https://www.sensemagic.nl" target="_top">
+            <img src="https://www.sensemagic.nl/wp-content/uploads/2017/05/logo_klein.png" alt="SenseMagic Logo">
+        </a>
+    </div>
+    {% endif %}
+
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+
+    {% if not standalone %}
+    <!-- WordPress iframe height communication -->
+    <script src="/static/js/iframe-resize.js"></script>
+    {% endif %}
+
+    {% block extra_script %}{% endblock %}
+</body>
+</html>
+

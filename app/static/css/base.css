@@ -1,0 +1,90 @@
+/* Base styles for SenseMagic applications */
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: #f5f5f5;
+    line-height: 1.6;
+}
+
+.container {
+    background-color: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+h1 {
+    color: #333;
+    border-bottom: 3px solid #4CAF50;
+    padding-bottom: 10px;
+    margin-top: 0;
+}
+
+h2 {
+    color: #444;
+    margin-top: 30px;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 5px;
+}
+
+h3 {
+    color: #555;
+    margin-top: 20px;
+}
+
+/* Logo styles */
+.logo-container {
+    text-align: left;
+    margin-bottom: 20px;
+    padding: 1vw 0;
+    border-bottom: 2px solid #4CAF50;
+    background: none;
+}
+
+.logo-container a {
+    display: inline-block;
+    line-height: 0; /* Remove any extra space around the image */
+}
+
+.logo-container img {
+    height: auto;
+    width: auto;
+    max-height: none;
+    display: block;
+    margin: 0;
+    padding: 0;
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    transition: opacity 0.3s;
+    image-rendering: -webkit-optimize-contrast; /* Better rendering for transparent PNGs */
+}
+
+.logo-container img:hover {
+    opacity: 0.8;
+}
+
+/* Desktop: scale logo height as a percentage of viewport width */
+@media (min-width: 768px) {
+    .logo-container img {
+        height: calc(10vw);
+        max-height: 200px;
+        width: auto;
+    }
+    .logo-container {
+        padding-top: 1vw;
+        padding-bottom: 1vw;
+    }
+}
+
+/* Mobile: smaller logo */
+@media (max-width: 767px) {
+    .logo-container img {
+        height: auto;
+        max-height: 80px;
+    }
+}
+

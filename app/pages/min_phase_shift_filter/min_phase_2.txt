@@ -1,0 +1,73 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.fft import fft, ifft
+
+def get_group_delay(log_mag, fs=1.0):
+    """
+    Calculates group delay from log-magnitude using the Hilbert Transform relationship:
+    Group Delay = Hilbert[ d/dw (log_magnitude) ]
+    """
+    N = len(log_mag)
+    # 1. Take derivative of log magnitude
+    # dL/dw = diff(L) / delta_w
+    dw = 2 * np.pi / N
+    dL_dw = np.gradient(log_mag, dw)
+    
+    # 2. Apply Hilbert Transform in frequency domain
+    # F(H[u]) = -j * sgn(w) * F(u)
+    # In discrete time, this is equivalent to zeroing negative frequencies 
+    # and doubling positive ones (the analytic signal approach).
+    U = fft(dL_dw)
+    H_U = np.zeros_like(U)
+    H_U[0] = U[0] # DC remains
+    H_U[1:N//2] = -1j * U[1:N//2] # Positive frequencies
+    H_U[N//2+1:] = 1j * U[N//2+1:] # Negative frequencies
+    
+    group_delay = np.real(ifft(H_U))
+    return group_delay
+
+# --- Parameters ---
+N = 2048
+w = np.linspace(0, np.pi, N) # Half-spectrum (0 to Nyquist)
+wp, ws = 0.3 * np.pi, 0.5 * np.pi # Passband and stopband edges
+A = 6.0 # Attenuation in Nepers (~52 dB)
+
+# --- Transition Functions ---
+x = np.clip((w - wp) / (ws - wp), 0, 1)
+
+# 1. Linear Ramp (Optimal for L2 energy of derivative)
+L_linear = np.where(w < wp, 0, np.where(w > ws, -A, -A * x))
+
+# 2. 5th-degree Polynomial (Optimal for L2 with C2 continuity)
+L_poly = np.where(w < wp, 0, np.where(w > ws, -A, -A * (10*x**3 - 15*x**4 + 6*x**5)))
+
+# 3. Raised Cosine (C1 continuity, smooth S-curve)
+L_cos = np.where(w < wp, 0, np.where(w > ws, -A, -A/2 * (1 - np.cos(np.pi * x))))
+
+# --- Full spectrum mirror for Hilbert Transform ---
+def mirror(L): return np.concatenate([L, L[::-1]])
+
+gd_linear = get_group_delay(mirror(L_linear))[:N]
+gd_poly = get_group_delay(mirror(L_poly))[:N]
+gd_cos = get_group_delay(mirror(L_cos))[:N]
+
+# --- Plotting ---
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+
+ax1.plot(w/np.pi, L_linear, label='Linear (L2 Opt)')
+ax1.plot(w/np.pi, L_poly, label='5th-Poly (C2 Opt)')
+ax1.plot(w/np.pi, L_cos, '--', label='Raised Cosine')
+ax1.set_ylabel('Log Magnitude (Nepers)')
+ax1.legend()
+ax1.set_title('Optimal Minimum-Phase Transition Profiles')
+
+ax2.plot(w/np.pi, gd_linear, label='Linear GD')
+ax2.plot(w/np.pi, gd_poly, label='5th-Poly GD')
+ax2.plot(w/np.pi, gd_cos, '--', label='Raised Cosine GD')
+ax2.set_ylabel('Group Delay (samples)')
+ax2.set_xlabel('Normalized Frequency (units of π)')
+ax2.set_ylim(-10, 100) # Zoom into transition
+ax2.grid(True)
+
+plt.tight_layout()
+plt.show()

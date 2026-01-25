@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 320">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="320" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="400" y="30" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#333">Cascaded Control Loop with Feed-Forward</text>
+
+  <!-- Setpoint -->
+  <text x="30" y="125" font-family="Arial, sans-serif" font-size="14" fill="#333">Pressure</text>
+  <text x="30" y="142" font-family="Arial, sans-serif" font-size="14" fill="#333">Setpoint</text>
+
+  <!-- Arrow from setpoint -->
+  <line x1="85" y1="130" x2="115" y2="130" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Outer loop summing junction -->
+  <circle cx="130" cy="130" r="15" fill="white" stroke="#333" stroke-width="2"/>
+  <text x="130" y="135" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#333">Σ</text>
+  <text x="120" y="120" font-family="Arial, sans-serif" font-size="12" fill="#333">+</text>
+  <text x="120" y="148" font-family="Arial, sans-serif" font-size="12" fill="#c00">−</text>
+
+  <!-- Arrow to outer controller -->
+  <line x1="145" y1="130" x2="175" y2="130" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Outer Controller (Pressure) -->
+  <rect x="180" y="105" width="100" height="50" rx="5" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>
+  <text x="230" y="125" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#1976d2">Outer Loop</text>
+  <text x="230" y="142" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#1976d2">(Pressure PI)</text>
+
+  <!-- Feed-forward block -->
+  <rect x="180" y="35" width="100" height="45" rx="5" fill="#fff3e0" stroke="#f57c00" stroke-width="2"/>
+  <text x="230" y="55" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#f57c00">Feed-Forward</text>
+  <text x="230" y="72" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#f57c00">(Lookup Table)</text>
+
+  <!-- Arrow from setpoint to feed-forward -->
+  <path d="M 100 130 L 100 57 L 175 57" fill="none" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Summing junction after outer controller -->
+  <circle cx="320" cy="130" r="15" fill="white" stroke="#333" stroke-width="2"/>
+  <text x="320" y="135" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#333">Σ</text>
+  <text x="310" y="120" font-family="Arial, sans-serif" font-size="12" fill="#333">+</text>
+  <text x="330" y="120" font-family="Arial, sans-serif" font-size="12" fill="#333">+</text>
+
+  <!-- Arrow from outer controller to sum -->
+  <line x1="280" y1="130" x2="300" y2="130" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Arrow from feed-forward to sum -->
+  <path d="M 280 57 L 320 57 L 320 110" fill="none" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Inner loop summing junction -->
+  <circle cx="380" cy="130" r="15" fill="white" stroke="#333" stroke-width="2"/>
+  <text x="380" y="135" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#333">Σ</text>
+  <text x="370" y="120" font-family="Arial, sans-serif" font-size="12" fill="#333">+</text>
+  <text x="370" y="148" font-family="Arial, sans-serif" font-size="12" fill="#c00">−</text>
+
+  <!-- Arrow to inner sum -->
+  <line x1="335" y1="130" x2="360" y2="130" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Arrow to inner controller -->
+  <line x1="395" y1="130" x2="425" y2="130" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Inner Controller (Speed/Torque) -->
+  <rect x="430" y="105" width="100" height="50" rx="5" fill="#e8f5e9" stroke="#388e3c" stroke-width="2"/>
+  <text x="480" y="125" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#388e3c">Inner Loop</text>
+  <text x="480" y="142" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#388e3c">(Speed/Torque)</text>
+
+  <!-- Arrow to plant -->
+  <line x1="530" y1="130" x2="560" y2="130" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Plant (Fan + Duct) -->
+  <rect x="565" y="105" width="100" height="50" rx="5" fill="#fce4ec" stroke="#c2185b" stroke-width="2"/>
+  <text x="615" y="125" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#c2185b">Plant</text>
+  <text x="615" y="142" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#c2185b">(Fan + Duct)</text>
+
+  <!-- Output arrow -->
+  <line x1="665" y1="130" x2="720" y2="130" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Output label -->
+  <text x="745" y="125" font-family="Arial, sans-serif" font-size="14" fill="#333">Pressure</text>
+  <text x="745" y="142" font-family="Arial, sans-serif" font-size="14" fill="#333">Output</text>
+
+  <!-- Fast feedback (inner loop) -->
+  <rect x="480" y="200" width="90" height="40" rx="5" fill="#e8f5e9" stroke="#388e3c" stroke-width="2"/>
+  <text x="525" y="218" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#388e3c">Speed</text>
+  <text x="525" y="232" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#388e3c">Sensor ⚡</text>
+
+  <!-- Inner feedback path -->
+  <path d="M 615 155 L 615 220 L 575 220" fill="none" stroke="#388e3c" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <path d="M 480 220 L 380 220 L 380 150" fill="none" stroke="#388e3c" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Slow feedback (outer loop) -->
+  <rect x="230" y="260" width="90" height="40" rx="5" fill="#e3f2fd" stroke="#1976d2" stroke-width="2"/>
+  <text x="275" y="278" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="bold" fill="#1976d2">Pressure</text>
+  <text x="275" y="292" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#1976d2">Sensor 🐢</text>
+
+  <!-- Outer feedback path -->
+  <path d="M 700 130 L 700 280 L 325 280" fill="none" stroke="#1976d2" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <path d="M 230 280 L 130 280 L 130 150" fill="none" stroke="#1976d2" stroke-width="2" marker-end="url(#arrowhead)"/>
+
+  <!-- Legend -->
+  <rect x="20" y="260" width="150" height="50" rx="5" fill="white" stroke="#ccc" stroke-width="1"/>
+  <text x="30" y="278" font-family="Arial, sans-serif" font-size="11" fill="#388e3c">⚡ Fast feedback</text>
+  <text x="30" y="298" font-family="Arial, sans-serif" font-size="11" fill="#1976d2">🐢 Slow feedback</text>
+</svg>
+

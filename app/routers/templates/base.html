@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Rectifier Calculator{% endblock %}</title>
+
+    <!-- External CSS -->
+    <link rel="stylesheet" href="/static/css/base.css">
+    {% block extra_css %}{% endblock %}
+
+    <style>
+        /* Page-specific max-width override */
+        body {
+            max-width: {% block max_width %}1200px{% endblock %};
+        }
+        {% block extra_style %}{% endblock %}
+    </style>
+
+    {% if standalone|default(false) %}
+    <!-- MathJax for LaTeX rendering in standalone mode -->
+    <script>
+    window.MathJax = {
+        tex: {
+            inlineMath: [['$', '$']],
+            displayMath: [['$$', '$$']],
+            processEscapes: false,
+            processEnvironments: true
+        },
+        options: {
+            skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+        }
+    };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+    {% endif %}
+
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    {% if standalone|default(false) %}
+    <div class="logo-container">
+        <a href="https://www.sensemagic.nl" target="_top">
+            <img src="https://www.sensemagic.nl/wp-content/uploads/2017/05/logo_klein.png" alt="SenseMagic Logo">
+        </a>
+    </div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+
+    {% if not standalone|default(false) %}
+    <!-- WordPress iframe height communication -->
+    <script src="/static/js/iframe-resize.js"></script>
+    {% endif %}
+
+    {% block extra_script %}{% endblock %}
+</body>
+</html>
+

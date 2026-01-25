@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="900" height="500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .box { fill: #fff; stroke: #333; stroke-width: 2; }
+      .process { fill: #E3F2FD; }
+      .data { fill: #FFF3E0; }
+      .response { fill: #E8F5E9; }
+      .text { fill: #333; font-family: Arial, sans-serif; font-size: 13px; }
+      .title { font-size: 16px; font-weight: bold; }
+      .small { font-size: 11px; fill: #666; }
+      .arrow { stroke: #666; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+      .number { fill: #fff; stroke: none; font-weight: bold; }
+      .circle { fill: #2196F3; stroke: none; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#666" />
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="450" y="30" text-anchor="middle" class="text title" font-size="20">
+    Real-Time Plot Update Flow
+  </text>
+
+  <!-- Client Browser -->
+  <rect x="50" y="80" width="180" height="100" class="box process" rx="5"/>
+  <text x="140" y="105" text-anchor="middle" class="text title">Client Browser</text>
+  <text x="140" y="130" text-anchor="middle" class="text">User moves slider</text>
+  <text x="140" y="150" text-anchor="middle" class="text small">onChange event</text>
+  <text x="140" y="165" text-anchor="middle" class="text small">Plotly chart visible</text>
+
+  <!-- Step 1 -->
+  <circle cx="240" cy="130" r="15" class="circle"/>
+  <text x="240" y="135" text-anchor="middle" class="number">1</text>
+
+  <!-- JavaScript -->
+  <rect x="270" y="80" width="180" height="100" class="box process" rx="5"/>
+  <text x="360" y="105" text-anchor="middle" class="text title">JavaScript</text>
+  <text x="360" y="130" text-anchor="middle" class="text">updatePlots()</text>
+  <text x="360" y="150" text-anchor="middle" class="text small">Capture slider value</text>
+  <text x="360" y="165" text-anchor="middle" class="text small">Build FormData</text>
+
+  <!-- Arrow: Browser -> JS -->
+  <path d="M 230 130 L 270 130" class="arrow"/>
+
+  <!-- Step 2 -->
+  <circle cx="460" cy="130" r="15" class="circle"/>
+  <text x="460" y="135" text-anchor="middle" class="number">2</text>
+
+  <!-- AJAX Request -->
+  <rect x="490" y="80" width="180" height="100" class="box data" rx="5"/>
+  <text x="580" y="105" text-anchor="middle" class="text title">AJAX Request</text>
+  <text x="580" y="130" text-anchor="middle" class="text">POST /plot_data</text>
+  <text x="580" y="150" text-anchor="middle" class="text small">capacitance: 100</text>
+  <text x="580" y="165" text-anchor="middle" class="text small">load_param: 0.5</text>
+
+  <!-- Arrow: JS -> AJAX -->
+  <path d="M 450 130 L 490 130" class="arrow"/>
+
+  <!-- Step 3 -->
+  <circle cx="680" cy="130" r="15" class="circle"/>
+  <text x="680" y="135" text-anchor="middle" class="number">3</text>
+
+  <!-- FastAPI Server -->
+  <rect x="710" y="80" width="180" height="100" class="box process" rx="5"/>
+  <text x="800" y="105" text-anchor="middle" class="text title">FastAPI Server</text>
+  <text x="800" y="130" text-anchor="middle" class="text">Calculate results</text>
+  <text x="800" y="150" text-anchor="middle" class="text small">RectifierModel.solve()</text>
+  <text x="800" y="165" text-anchor="middle" class="text small">Generate plot data</text>
+
+  <!-- Arrow: AJAX -> Server -->
+  <path d="M 670 130 L 710 130" class="arrow"/>
+
+  <!-- Step 4 (return path) -->
+  <circle cx="680" cy="280" r="15" class="circle"/>
+  <text x="680" y="285" text-anchor="middle" class="number">4</text>
+
+  <!-- JSON Response -->
+  <rect x="710" y="230" width="180" height="100" class="box response" rx="5"/>
+  <text x="800" y="255" text-anchor="middle" class="text title">JSON Response</text>
+  <text x="800" y="280" text-anchor="middle" class="text">{discharge: {...}}</text>
+  <text x="800" y="300" text-anchor="middle" class="text small">Plotly data format</text>
+  <text x="800" y="315" text-anchor="middle" class="text small">x, y arrays</text>
+
+  <!-- Arrow: Server -> Response (down) -->
+  <path d="M 800 180 L 800 230" class="arrow"/>
+
+  <!-- Arrow: Response -> left -->
+  <path d="M 710 280 L 690 280" class="arrow"/>
+
+  <!-- Step 5 -->
+  <circle cx="460" cy="280" r="15" class="circle"/>
+  <text x="460" y="285" text-anchor="middle" class="number">5</text>
+
+  <!-- Plotly.react -->
+  <rect x="270" y="230" width="180" height="100" class="box process" rx="5"/>
+  <text x="360" y="255" text-anchor="middle" class="text title">Plotly.react()</text>
+  <text x="360" y="280" text-anchor="middle" class="text">Update chart data</text>
+  <text x="360" y="300" text-anchor="middle" class="text small">No page reload</text>
+  <text x="360" y="315" text-anchor="middle" class="text small">In-place update</text>
+
+  <!-- Arrow: Response -> Plotly -->
+  <path d="M 670 280 L 450 280" class="arrow"/>
+
+  <!-- Step 6 -->
+  <circle cx="240" cy="280" r="15" class="circle"/>
+  <text x="240" y="285" text-anchor="middle" class="number">6</text>
+
+  <!-- Updated UI -->
+  <rect x="50" y="230" width="180" height="100" class="box response" rx="5"/>
+  <text x="140" y="255" text-anchor="middle" class="text title">Updated UI</text>
+  <text x="140" y="280" text-anchor="middle" class="text">Chart refreshed</text>
+  <text x="140" y="300" text-anchor="middle" class="text small">~100ms total</text>
+  <text x="140" y="315" text-anchor="middle" class="text small">Page stays in place</text>
+
+  <!-- Arrow: Plotly -> UI -->
+  <path d="M 270 280 L 230 280" class="arrow"/>
+
+  <!-- Performance note -->
+  <rect x="50" y="380" width="840" height="90" fill="none" stroke="#4CAF50" stroke-width="2" rx="5"/>
+  <text x="470" y="405" text-anchor="middle" class="text title">Performance Benefits</text>
+  <text x="100" y="425" class="text">✓ No page reload (instant feedback)</text>
+  <text x="100" y="445" class="text">✓ Only plot data transferred (~5KB)</text>
+  <text x="100" y="465" class="text">✓ Page position preserved (no jump)</text>
+  <text x="500" y="425" class="text">✓ Calculation time: ~50ms</text>
+  <text x="500" y="445" class="text">✓ Network + render: ~50ms</text>
+  <text x="500" y="465" class="text">✓ Total latency: ~100ms</text>
+</svg>
+

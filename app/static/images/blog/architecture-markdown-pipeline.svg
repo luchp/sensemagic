@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="650" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .box { fill: #fff; stroke: #333; stroke-width: 2; }
+      .markdown { fill: #FFF9C4; }
+      .html { fill: #E1F5FE; }
+      .render { fill: #F3E5F5; }
+      .text { fill: #333; font-family: 'Courier New', monospace; font-size: 12px; }
+      .title { font-size: 14px; font-weight: bold; font-family: Arial, sans-serif; }
+      .arrow { stroke: #666; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+      .code { font-family: 'Courier New', monospace; font-size: 11px; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#666" />
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="400" y="30" text-anchor="middle" class="title" font-size="18">
+    Markdown Rendering Pipeline with LaTeX Preservation
+  </text>
+
+  <!-- Step 1: Original Markdown -->
+  <rect x="50" y="60" width="700" height="100" class="box markdown" rx="5"/>
+  <text x="400" y="85" text-anchor="middle" class="title">1. Original Markdown Content</text>
+  <text x="70" y="110" class="code">![Schematic](diagram.jpg)</text>
+  <text x="70" y="130" class="code">The equation is $x^2 + y^2 = r^2$</text>
+  <text x="70" y="150" class="code">[User Guide](RECTIFIER_USER_GUIDE.md)</text>
+
+  <!-- Arrow down -->
+  <path d="M 400 160 L 400 180" class="arrow"/>
+
+  <!-- Step 2: LaTeX Protection -->
+  <rect x="50" y="180" width="700" height="100" class="box render" rx="5"/>
+  <text x="400" y="205" text-anchor="middle" class="title">2. Protect LaTeX (before markdown processing)</text>
+  <text x="70" y="230" class="code">The equation is &amp;lt;!--LATEXINLINE0--&amp;gt;</text>
+  <text x="70" y="250" class="text" font-family="Arial" font-size="11">Store: latex_blocks[0] = "$x^2 + y^2 = r^2$"</text>
+  <text x="70" y="265" class="text" font-family="Arial" font-size="10" fill="#666">
+    Prevents markdown from destroying LaTeX syntax
+  </text>
+
+  <!-- Arrow down -->
+  <path d="M 400 280 L 400 300" class="arrow"/>
+
+  <!-- Step 3: Link/Image Rewriting -->
+  <rect x="50" y="300" width="700" height="100" class="box render" rx="5"/>
+  <text x="400" y="325" text-anchor="middle" class="title">3. Rewrite Links &amp; Images (before markdown)</text>
+  <text x="70" y="350" class="code">![Schematic](/static/images/rectifier/diagram.jpg)</text>
+  <text x="70" y="370" class="code">[User Guide](/app_rectifier/guide?standalone=true)</text>
+  <text x="70" y="385" class="text" font-family="Arial" font-size="10" fill="#666">
+    Convert relative paths to absolute URLs
+  </text>
+
+  <!-- Arrow down -->
+  <path d="M 400 400 L 400 420" class="arrow"/>
+
+  <!-- Step 4: Markdown Processing -->
+  <rect x="50" y="420" width="700" height="80" class="box html" rx="5"/>
+  <text x="400" y="445" text-anchor="middle" class="title">4. Python-Markdown Processing</text>
+  <text x="70" y="470" class="code">&amp;lt;img src="/static/images/rectifier/diagram.jpg" ...&amp;gt;</text>
+  <text x="70" y="485" class="text" font-family="Arial" font-size="10" fill="#666">
+    attr_list extension handles {: style="..."} attributes
+  </text>
+
+  <!-- Arrow down -->
+  <path d="M 400 500 L 400 520" class="arrow"/>
+
+  <!-- Step 5: LaTeX Restoration -->
+  <rect x="50" y="520" width="700" height="80" class="box html" rx="5"/>
+  <text x="400" y="545" text-anchor="middle" class="title">5. Restore LaTeX (after markdown)</text>
+  <text x="70" y="570" class="code">&amp;lt;p&amp;gt;The equation is $x^2 + y^2 = r^2$&amp;lt;/p&amp;gt;</text>
+  <text x="70" y="585" class="text" font-family="Arial" font-size="10" fill="#666">
+    Replace placeholders with original LaTeX - MathJax renders in browser
+  </text>
+
+  <!-- Side note box -->
+  <rect x="50" y="615" width="340" height="25" fill="#E8F5E9" stroke="#4CAF50" stroke-width="1" rx="3"/>
+  <text x="220" y="632" text-anchor="middle" class="text" font-family="Arial" font-size="11">
+    ✓ LaTeX survives markdown processing intact
+  </text>
+
+  <rect x="410" y="615" width="340" height="25" fill="#FFF3E0" stroke="#FF9800" stroke-width="1" rx="3"/>
+  <text x="580" y="632" text-anchor="middle" class="text" font-family="Arial" font-size="11">
+    ✓ Links/images work in standalone &amp; embedded modes
+  </text>
+</svg>
+

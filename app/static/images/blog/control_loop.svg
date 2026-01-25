@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 532.0506 200"
+   version="1.1"
+   id="svg16"
+   sodipodi:docname="control_loop.svg"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
+   width="532.0506"
+   height="200"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview16"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="1.5158334"
+     inkscape:cx="374.05166"
+     inkscape:cy="170.8631"
+     inkscape:window-width="1920"
+     inkscape:window-height="1110"
+     inkscape:window-x="-9"
+     inkscape:window-y="-9"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg16" />
+  <!-- Background -->
+  <rect
+     width="532.0506"
+     height="200"
+     fill="#f8f9fa"
+     id="rect1"
+     x="0"
+     y="0"
+     style="stroke-width:0.941674" />
+  <!-- Arrow markers -->
+  <defs
+     id="defs3">
+    <marker
+       id="arrow"
+       markerWidth="10"
+       markerHeight="10"
+       refX="9"
+       refY="3"
+       orient="auto"
+       markerUnits="strokeWidth">
+      <path
+         d="M 0,0 V 6 L 9,3 Z"
+         fill="#333333"
+         id="path1" />
+    </marker>
+    <marker
+       id="arrowBlue"
+       markerWidth="10"
+       markerHeight="10"
+       refX="9"
+       refY="3"
+       orient="auto"
+       markerUnits="strokeWidth">
+      <path
+         d="M 0,0 V 6 L 9,3 Z"
+         fill="#2563eb"
+         id="path2" />
+    </marker>
+    <marker
+       id="arrowOrange"
+       markerWidth="10"
+       markerHeight="10"
+       refX="9"
+       refY="3"
+       orient="auto"
+       markerUnits="strokeWidth">
+      <path
+         d="M 0,0 V 6 L 9,3 Z"
+         fill="#d97706"
+         id="path3" />
+    </marker>
+  </defs>
+  <!-- Summing junction -->
+  <circle
+     cx="100"
+     cy="100"
+     r="20"
+     fill="#ffffff"
+     stroke="#333333"
+     stroke-width="2"
+     id="circle3" />
+  <line
+     x1="90"
+     y1="100"
+     x2="110"
+     y2="100"
+     stroke="#333333"
+     stroke-width="2"
+     id="line3" />
+  <line
+     x1="100"
+     y1="90"
+     x2="100"
+     y2="110"
+     stroke="#333333"
+     stroke-width="2"
+     id="line4" />
+  <!-- Reference input arrow -->
+  <line
+     x1="20"
+     y1="100"
+     x2="80"
+     y2="100"
+     stroke="#2563eb"
+     stroke-width="2"
+     marker-end="url(#arrowBlue)"
+     id="line5" />
+  <text
+     x="30"
+     y="90"
+     font-family="Arial"
+     font-size="14px"
+     fill="#2563eb"
+     id="text5">r(t)</text>
+  <!-- Error signal -->
+  <line
+     x1="120"
+     y1="100"
+     x2="170"
+     y2="100"
+     stroke="#333333"
+     stroke-width="2"
+     marker-end="url(#arrow)"
+     id="line6" />
+  <text
+     x="135"
+     y="90"
+     font-family="Arial"
+     font-size="12px"
+     fill="#666666"
+     id="text6">e(t)</text>
+  <!-- Controller block -->
+  <rect
+     x="170"
+     y="70"
+     width="100"
+     height="60"
+     rx="5"
+     fill="#3b82f6"
+     stroke="#1d4ed8"
+     stroke-width="2"
+     id="rect6" />
+  <text
+     x="220"
+     y="105"
+     font-family="Arial"
+     font-size="14px"
+     fill="#ffffff"
+     text-anchor="middle"
+     id="text7">Controller</text>
+  <text
+     x="220"
+     y="120"
+     font-family="Arial"
+     font-size="11px"
+     fill="#bfdbfe"
+     text-anchor="middle"
+     id="text8">C(s)</text>
+  <!-- Controller to Plant -->
+  <line
+     x1="270"
+     y1="100"
+     x2="320"
+     y2="100"
+     stroke="#333333"
+     stroke-width="2"
+     marker-end="url(#arrow)"
+     id="line8" />
+  <text
+     x="285"
+     y="90"
+     font-family="Arial"
+     font-size="12px"
+     fill="#666666"
+     id="text9">u(t)</text>
+  <!-- Plant block -->
+  <rect
+     x="320"
+     y="70"
+     width="100"
+     height="60"
+     rx="5"
+     fill="#10b981"
+     stroke="#059669"
+     stroke-width="2"
+     id="rect9" />
+  <text
+     x="370"
+     y="105"
+     font-family="Arial"
+     font-size="14px"
+     fill="#ffffff"
+     text-anchor="middle"
+     id="text10">Plant</text>
+  <text
+     x="370"
+     y="120"
+     font-family="Arial"
+     font-size="11px"
+     fill="#a7f3d0"
+     text-anchor="middle"
+     id="text11">G(s)</text>
+  <!-- Output -->
+  <line
+     x1="420"
+     y1="100"
+     x2="515.79987"
+     y2="100"
+     stroke="#333333"
+     stroke-width="2"
+     marker-end="url(#arrow)"
+     id="line11" />
+  <text
+     x="499.75812"
+     y="85.38208"
+     font-family="Arial"
+     font-size="14px"
+     fill="#059669"
+     id="text12">y(t)</text>
+  <!-- Feedback path -->
+  <line
+     x1="466.47607"
+     y1="100"
+     x2="466.47607"
+     y2="170"
+     stroke="#d97706"
+     stroke-width="2"
+     id="line12" />
+  <line
+     x1="467.46564"
+     y1="169.67015"
+     x2="100"
+     y2="169.67015"
+     stroke="#d97706"
+     stroke-width="1.96674"
+     id="line13" />
+  <line
+     x1="99.979385"
+     y1="170.8885"
+     x2="99.979385"
+     y2="120.96922"
+     stroke="#d97706"
+     stroke-width="2.0396"
+     marker-end="url(#arrowOrange)"
+     id="line14" />
+  <!-- Feedback label -->
+  <text
+     x="290"
+     y="185"
+     font-family="Arial"
+     font-size="12px"
+     fill="#d97706"
+     text-anchor="middle"
+     id="text14">Feedback H(s)</text>
+  <!-- Plus/Minus signs at summing junction -->
+  <text
+     x="68.233238"
+     y="95.171783"
+     font-family="Arial"
+     font-size="20px"
+     font-weight="bold"
+     fill="#2563eb"
+     id="text15">+</text>
+  <text
+     x="105.12849"
+     y="131.37012"
+     font-family="Arial"
+     font-size="20px"
+     font-weight="bold"
+     fill="#d97706"
+     id="text16">−</text>
+</svg>

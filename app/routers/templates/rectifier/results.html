@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block title %}Rectifier Calculator - Results{% endblock %}
+
+{% block max_width %}1400px{% endblock %}
+
+{% block extra_style %}
+        .back-button {
+            background-color: #2196F3;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        .back-button:hover {
+            background-color: #0b7dda;
+        }
+        .parameters {
+            background-color: #fff9e6;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            border-left: 4px solid #ff9800;
+        }
+        .parameters h3 {
+            margin-top: 0;
+        }
+        #loading-toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #4CAF50;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 5px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            display: none;
+            z-index: 1000;
+            font-weight: bold;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        .updating {
+            cursor: wait !important;
+        }
+        .updating * {
+            cursor: wait !important;
+        }
+{% endblock %}
+
+{% block content %}
+    <div class="container">
+        <a href="/app_rectifier/?model_type={{ model_type }}&frequency={{ frequency }}&voltage={{ voltage }}&nphase={{ nphase }}&load_param={{ load_param }}&max_load={{ max_load }}&capacitance={{ capacitance }}&cmax={{ cmax }}&plot_type={{ plot_type }}&standalone={{ 'true' if standalone else 'false' }}" class="back-button">← Back to Calculator</a>
+
+        <!-- Fixed position loading toast -->
+        <div id="loading-toast">
+            🔄 Updating plots...
+        </div>
+
+        <h1>🔌 Rectifier Analysis Results</h1>
+
+        <div class="parameters">
+            <h3>⚙️ Input Parameters</h3>
+            <ul>
+                <li><strong>Model Type:</strong> {{ model_name }}</li>
+                <li><strong>Frequency:</strong> {{ frequency }} Hz</li>
+                <li><strong>Peak Voltage:</strong> {{ voltage }} V</li>
+                <li><strong>Rectifier Type:</strong> {{ nphase }}-phase</li>
+                <li><strong>{{ load_param_name }}:</strong> {{ "%.3f"|format(load_param) }} {{ load_param_unit }}</li>
+                <li><strong>Max {{ load_param_name }}:</strong> {{ "%.3f"|format(max_load) }} {{ load_param_unit }}</li>
+                <li><strong>Capacitance:</strong> {{ capacitance }} μF</li>
+                <li><strong>Max Capacitance:</strong> {{ cmax }} μF</li>
+            </ul>
+        </div>
+
+        <!-- Interactive Controls -->
+        <div class="parameters" style="background-color: #f0fff0; border-left: 4px solid #4CAF50;">
+            <h3>🎚️ Interactive Controls</h3>
+            <p style="font-size: 14px; color: #666; margin-bottom: 15px;">
+                Adjust the sliders to see how changes affect the results. Plots update automatically when you release the slider.
+            </p>
+            <form id="updateForm">
+                <div style="margin: 15px 0;">
+                    <label for="load_slider"><strong>{{ load_param_name }}:</strong> <span id="load_value">{{ "%.3f"|format(load_param) }}</span> {{ load_param_unit }}</label>
+                    <input type="range" id="load_slider" name="load_param"
+                           min="0.001" max="{{ max_load }}"
+                           step="{% if model_type == 'current' %}0.001{% else %}0.1{% endif %}"
+                           value="{{ load_param }}"
+                           style="width: 100%; margin: 10px 0;"
+                           oninput="document.getElementById('load_value').textContent = parseFloat(this.value).toFixed(3)"
+                           onchange="updatePlots()">
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; color: #666;">
+                        <span>0.001</span>
+                        <span>{{ "%.3f"|format(max_load) }}</span>
+                    </div>
+                </div>
+
+                <div style="margin: 15px 0;">
+                    <label for="cap_slider"><strong>Capacitance:</strong> <span id="cap_value">{{ capacitance|int }}</span> μF</label>
+                    <input type="range" id="cap_slider" name="capacitance"
+                           min="1" max="{{ cmax }}" step="1" value="{{ capacitance }}"
+                           style="width: 100%; margin: 10px 0;"
+                           oninput="document.getElementById('cap_value').textContent = this.value"
+                           onchange="updatePlots()">
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; color: #666;">
+                        <span>1</span>
+                        <span>{{ cmax }}</span>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div id="plots-container"
+             data-model-type="{{ model_type }}"
+             data-frequency="{{ frequency }}"
+             data-voltage="{{ voltage }}"
+             data-nphase="{{ nphase }}"
+             data-max-load="{{ max_load }}"
+             data-cmax="{{ cmax }}"
+             data-plot-type="{{ plot_type }}">
+        {{ plots_html|safe }}
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_script %}
+    <script src="/static/js/rectifier/plot-updater.js"></script>
+{% endblock %}
+

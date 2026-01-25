@@ -1,0 +1,10 @@
+matplotlib
+pint
+fastapi
+python-multipart
+uvicorn
+plotly
+jinja2
+markdown
+pygments
+requests

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Error{% endblock %}
+
+{% block max_width %}800px{% endblock %}
+
+{% block extra_style %}
+        .error {
+            background-color: #ffebee;
+            border-left: 4px solid #f44336;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        .back-button {
+            background-color: #2196F3;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 20px;
+        }
+        .back-button:hover {
+            background-color: #0b7dda;
+        }
+{% endblock %}
+
+{% block content %}
+    <div class="error">
+        <h2>❌ Error</h2>
+        <p><strong>An error occurred while processing your request:</strong></p>
+        <p>{{ error_message }}</p>
+    </div>
+    <a href="/app_rectifier/?standalone={{ 'true' if standalone else 'false' }}" class="back-button">← Back to Calculator</a>
+{% endblock %}
+

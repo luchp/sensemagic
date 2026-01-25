@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iframe Test - WordPress Simulation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        h1 {
+            color: #333;
+        }
+        .test-section {
+            background-color: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        iframe {
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            width: 100%;
+            transition: height 0.3s ease;
+        }
+        .info {
+            background-color: #e7f3fe;
+            border-left: 4px solid #2196F3;
+            padding: 12px;
+            margin: 10px 0;
+        }
+        .success {
+            background-color: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 12px;
+            margin: 10px 0;
+        }
+        #height-log {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+
+    <!-- MathJax for LaTeX rendering (simulating WordPress with MathJax plugin) -->
+    <script>
+    window.MathJax = {
+        tex: {
+            inlineMath: [['$', '$'], ['\\(', '\\)']],
+            displayMath: [['$$', '$$'], ['\\[', '\\]']],
+            processEscapes: true,
+            processEnvironments: true
+        },
+        options: {
+            skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+        }
+    };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+</head>
+<body>
+    <h1>🧪 Iframe Mode Test - WordPress Simulation</h1>
+
+    <div class="info">
+        <strong>ℹ️ Info:</strong> This page simulates how your FastAPI pages will work when embedded in WordPress iframes.
+        MathJax is loaded on this parent page, and the iframe sends height updates.
+    </div>
+
+    <div class="test-section">
+        <h2>Test 1: Rectifier Calculator (Iframe Mode)</h2>
+        <div class="info">
+            URL: <code>http://localhost:8000/app_rectifier/</code> (default is iframe mode)
+        </div>
+        <iframe id="calc-iframe" src="http://localhost:8000/app_rectifier/" height="800"></iframe>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 2: User Guide (Iframe Mode)</h2>
+        <div class="info">
+            URL: <code>http://localhost:8000/app_rectifier/guide?standalone=false</code>
+        </div>
+        <iframe id="guide-iframe" src="http://localhost:8000/app_rectifier/guide?standalone=false" height="600"></iframe>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 3: Mathematics Documentation (Iframe Mode)</h2>
+        <div class="info">
+            URL: <code>http://localhost:8000/app_rectifier/math?standalone=false</code>
+        </div>
+        <iframe id="math-iframe" src="http://localhost:8000/app_rectifier/math?standalone=false" height="600"></iframe>
+    </div>
+
+    <div class="test-section">
+        <h2>📊 Height Adjustment Log</h2>
+        <div class="success" id="status">Waiting for height messages...</div>
+        <div id="height-log"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>🔗 Standalone Mode Links</h2>
+        <p>Open these in a new tab to test standalone mode (with MathJax loaded by the page itself):</p>
+        <ul>
+            <li><a href="http://localhost:8000/app_rectifier/?standalone=true" target="_blank">Rectifier Calculator (Standalone)</a></li>
+            <li><a href="http://localhost:8000/app_rectifier/guide?standalone=true" target="_blank">User Guide (Standalone)</a></li>
+            <li><a href="http://localhost:8000/app_rectifier/math?standalone=true" target="_blank">Mathematics Documentation (Standalone)</a></li>
+        </ul>
+    </div>
+
+    <script>
+    let messageCount = 0;
+    const heightLog = document.getElementById('height-log');
+    const status = document.getElementById('status');
+
+    // Listen for height messages from all iframes
+    window.addEventListener("message", function(e) {
+        if (e.data.iframeHeight) {
+            messageCount++;
+
+            // Find which iframe sent the message
+            let iframeName = 'unknown';
+            if (e.source === document.getElementById('calc-iframe').contentWindow) {
+                iframeName = 'Calculator';
+                document.getElementById('calc-iframe').style.height = e.data.iframeHeight + "px";
+            } else if (e.source === document.getElementById('guide-iframe').contentWindow) {
+                iframeName = 'User Guide';
+                document.getElementById('guide-iframe').style.height = e.data.iframeHeight + "px";
+            } else if (e.source === document.getElementById('math-iframe').contentWindow) {
+                iframeName = 'Math Docs';
+                document.getElementById('math-iframe').style.height = e.data.iframeHeight + "px";
+            }
+
+            // Update status
+            status.innerHTML = `<strong>✓ Success!</strong> Received ${messageCount} height update(s)`;
+            status.className = 'success';
+
+            // Log the message
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.textContent = `[${timestamp}] ${iframeName}: Height set to ${e.data.iframeHeight}px`;
+            heightLog.appendChild(logEntry);
+
+            // Auto-scroll log to bottom
+            heightLog.scrollTop = heightLog.scrollHeight;
+
+            console.log(`Height message from ${iframeName}:`, e.data.iframeHeight);
+        }
+    });
+    </script>
+</body>
+</html>
+

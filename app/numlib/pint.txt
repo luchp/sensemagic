@@ -1,0 +1,4 @@
+# snet_position = 0.8333 * centimeter = spos = snet
+ampere_rms = 0.70710678118 * ampere = arms = Arms
+percent = 0.01*count = %
+deca_newton = 10.0 * newton = DN

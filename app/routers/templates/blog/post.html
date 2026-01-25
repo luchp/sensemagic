@@ -1,0 +1,352 @@
+{% extends "base.html" if not standalone else "standalone_base.html" %}
+
+{% block title %}{{ title }} - SenseMagic{% endblock %}
+
+{% block extra_css %}
+<!-- Pygments syntax highlighting -->
+<link rel="stylesheet" href="/static/css/pygments.css">
+{% if print_mode == 'linkedin' %}
+<!-- LinkedIn carousel print styles -->
+<link rel="stylesheet" href="/static/css/print-linkedin.css">
+{% endif %}
+{% endblock %}
+
+{% block body_class %}{% if print_mode == 'linkedin' %}print-preview{% endif %}{% endblock %}
+
+{% block content %}
+<article class="blog-post{% if not standalone %} embedded{% endif %}">
+    {% if standalone %}
+    <header class="post-header">
+        <div class="title-row">
+            <h1>{{ title }}</h1>
+            {% if print_mode != 'linkedin' %}
+            <a href="?print=linkedin&standalone=true" class="print-btn" title="Open print-friendly version for LinkedIn PDF">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 6 2 18 2 18 9"></polyline>
+                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+                    <rect x="6" y="14" width="12" height="8"></rect>
+                </svg>
+            </a>
+            {% endif %}
+        </div>
+        <div class="post-meta">
+            <span class="post-date">{{ date }}</span>
+            {% if author %}
+            <span class="post-author">by {{ author }}</span>
+            {% endif %}
+        </div>
+    </header>
+    {% endif %}
+
+    {% if toc %}
+    <aside class="table-of-contents">
+        <h2>Table of Contents</h2>
+        {{ toc|safe }}
+    </aside>
+    {% endif %}
+
+    <div class="post-content">
+        {{ content|safe }}
+    </div>
+
+    {% if standalone %}
+    <footer class="post-footer">
+        <a href="/app_articles/?standalone={{ standalone|lower }}" class="back-link">← Back to Blog</a>
+    </footer>
+    {% endif %}
+</article>
+
+<style>
+.blog-post {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Embedded mode - minimal padding, no borders */
+.blog-post.embedded {
+    padding: 0;
+    margin: 0;
+    max-width: 100%;
+}
+
+.blog-post.embedded .post-content {
+    padding: 10px 0;
+}
+
+.blog-post.embedded .post-content h2 {
+    margin-top: 30px;
+}
+
+.blog-post.embedded .post-footer {
+    margin-top: 30px;
+    padding-top: 15px;
+}
+
+.post-header {
+    margin-bottom: 40px;
+    border-bottom: 2px solid #e0e0e0;
+    padding-bottom: 20px;
+}
+
+.title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 15px;
+}
+
+.title-row h1 {
+    flex: 1;
+}
+
+.print-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: #f5f5f5;
+    color: #666;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    margin-top: 5px;
+}
+
+.print-btn:hover {
+    background: #e0e0e0;
+    color: #333;
+}
+
+.print-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+.post-header h1 {
+    margin: 0 0 15px 0;
+    font-size: 2.5em;
+    line-height: 1.2;
+    color: #333;
+}
+
+.post-meta {
+    color: #999;
+    font-size: 0.95em;
+}
+
+.post-meta span {
+    margin-right: 15px;
+}
+
+.table-of-contents {
+    background: #f5f5f5;
+    padding: 20px;
+    border-radius: 8px;
+    margin: 30px 0;
+}
+
+.table-of-contents h2 {
+    margin: 0 0 15px 0;
+    font-size: 1.2em;
+    color: #333;
+}
+
+.table-of-contents ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.table-of-contents li {
+    margin: 8px 0;
+}
+
+.table-of-contents a {
+    color: #2196F3;
+    text-decoration: none;
+}
+
+.table-of-contents a:hover {
+    text-decoration: underline;
+}
+
+.post-content {
+    line-height: 1.8;
+    color: #333;
+    font-size: 1.05em;
+}
+
+.post-content h2 {
+    margin: 50px 0 20px 0;
+    font-size: 1.8em;
+    color: #333;
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 10px;
+}
+
+.post-content h3 {
+    margin: 35px 0 15px 0;
+    font-size: 1.4em;
+    color: #444;
+}
+
+.post-content h4 {
+    margin: 25px 0 10px 0;
+    font-size: 1.2em;
+    color: #555;
+}
+
+.post-content p {
+    margin: 15px 0;
+}
+
+.post-content ul, .post-content ol {
+    margin: 15px 0;
+    padding-left: 30px;
+    display: block;  /* Ensure lists are block elements */
+}
+
+.post-content li {
+    margin: 8px 0;
+    display: list-item;  /* Ensure list items render properly */
+}
+
+.post-content ul {
+    list-style-type: disc;
+}
+
+.post-content ol {
+    list-style-type: decimal;
+}
+
+.post-content code {
+    background: #f5f5f5;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', Consolas, monospace;
+    font-size: 0.9em;
+    color: #d63384;
+}
+
+.post-content pre {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    padding: 15px;
+    overflow-x: auto;
+    margin: 20px 0;
+}
+
+.post-content pre code {
+    background: none;
+    padding: 0;
+    color: #333;
+    font-size: 0.95em;
+}
+
+/* Syntax highlighting for code blocks */
+.post-content .highlight {
+    background: #f8f9fa;
+    border-radius: 5px;
+    padding: 15px;
+    overflow-x: auto;
+    margin: 20px 0;
+}
+
+.post-content .highlight pre {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+}
+
+/* Pygments colors loaded from /static/css/pygments.css */
+
+.post-content blockquote {
+    border-left: 4px solid #2196F3;
+    padding-left: 20px;
+    margin: 20px 0;
+    color: #666;
+    font-style: italic;
+}
+
+.post-content img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 30px auto;
+    border-radius: 5px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.post-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+}
+
+.post-content th,
+.post-content td {
+    border: 1px solid #e0e0e0;
+    padding: 10px;
+    text-align: left;
+}
+
+.post-content th {
+    background: #f5f5f5;
+    font-weight: 600;
+}
+
+.post-content hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 40px 0;
+}
+
+.post-content em {
+    font-style: italic;
+    color: #666;
+}
+
+.post-content strong {
+    font-weight: 600;
+    color: #333;
+}
+
+.post-footer {
+    margin-top: 60px;
+    padding-top: 30px;
+    border-top: 2px solid #e0e0e0;
+}
+
+.back-link {
+    color: #4CAF50;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 1.1em;
+}
+
+.back-link:hover {
+    text-decoration: underline;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .blog-post {
+        padding: 15px;
+    }
+
+    .post-header h1 {
+        font-size: 2em;
+    }
+
+    .post-content {
+        font-size: 1em;
+    }
+}
+</style>
+{% endblock %}
+

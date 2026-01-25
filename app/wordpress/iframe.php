@@ -1,0 +1,125 @@
+<?php
+/*
+Plugin Name: iframe
+Plugin URI: http://wordpress.org/plugins/iframe/
+Description: [iframe src="http://www.youtube.com/embed/7_nAZQt9qu0" width="100%" height="500"] shortcode
+Version: 6.0
+Author: webvitaly
+Author URI: http://web-profile.net/wordpress/plugins/
+License: GPLv3
+*/
+
+if ( ! defined( 'ABSPATH' ) ) { // Avoid direct calls to this file and prevent full path disclosure
+	exit;
+}
+
+define('IFRAME_PLUGIN_VERSION', '6.0');
+
+// Load settings page functionality
+require_once( plugin_dir_path( __FILE__ ) . 'iframe-settings.php' );
+
+
+function iframe_plugin_add_shortcode_cb( $atts ) {
+	// Get plugin settings
+	$settings = iframe_plugin_get_settings();
+
+	$defaults = array(
+		//'src' => 'http://www.youtube.com/embed/7_nAZQt9qu0',
+		'width' => '100%',
+		'height' => '500',
+		'scrolling' => 'yes',
+		'class' => 'iframe-class',
+		'frameborder' => '0',
+		'loading' => $settings['loading'] // Global setting from settings array
+	);
+
+	if ( ! is_array( $atts ) ) {
+		$atts = array();
+	}
+
+	foreach ( $defaults as $default => $value ) { // add defaults
+		if ( ! @array_key_exists( $default, $atts ) ) { // mute warning with "@" when no params at all
+			$atts[$default] = $value;
+		}
+	}
+
+	$html = "\n".'<!-- iframe plugin v.'.IFRAME_PLUGIN_VERSION.' wordpress.org/plugins/iframe/ -->'."\n";
+	$html .= '<iframe';
+	foreach( $atts as $attr => $value ) {
+		if ( strtolower($attr) == 'src' ) { // sanitize url
+			$value = esc_url( $value );
+		}
+
+		// Remove 'srcdoc' attribute
+		if ( strtolower($attr) == 'srcdoc' ) {
+			continue;
+		}
+
+		// Skip attributes starting with "on". Examples: onload, onmouseover, onfocus, onpageshow, onclick
+		if ( strpos( strtolower( $attr ), 'on' ) === 0 ) {
+			continue;
+		}
+
+		// Skip loading attribute if set to 'none' (browser default)
+		if ( strtolower($attr) == 'loading' && strtolower($value) == 'none' ) {
+			continue;
+		}
+
+		if ($value !== '') { // adding all attributes
+			$html .= ' ' . esc_attr($attr) . '="' . esc_attr($value) . '"';
+		} else { // adding empty attributes
+			$html .= ' ' . esc_attr($attr);
+		}
+	}
+	$html .= '></iframe>'."\n";
+
+	// Add automatic height adjustment script
+	$iframe_class = esc_attr( $atts["class"] );
+	$html .= '
+		<script>
+		(function() {
+			var iframe = document.querySelector("iframe.' . $iframe_class . '");
+			if (iframe) {
+				// Listen for height messages from iframe content
+				window.addEventListener("message", function(e) {
+					if (e.data.iframeHeight && e.source === iframe.contentWindow) {
+						iframe.style.height = e.data.iframeHeight + "px";
+					}
+				});
+			}
+		})();
+		</script>
+	';
+
+	// Legacy: same_height_as support (kept for backwards compatibility)
+	if ( isset( $atts["same_height_as"] ) ) {
+		$html .= '
+			<script>
+			document.addEventListener("DOMContentLoaded", function(){
+				var target_element, iframe_element;
+				iframe_element = document.querySelector("iframe.' . $iframe_class . '");
+				target_element = document.querySelector("' . esc_attr( $atts["same_height_as"] ) . '");
+				if (iframe_element && target_element) {
+					iframe_element.style.height = target_element.offsetHeight + "px";
+				}
+			});
+			</script>
+		';
+	}
+
+	return $html;
+}
+add_shortcode( 'iframe', 'iframe_plugin_add_shortcode_cb' );
+
+
+function iframe_plugin_row_meta_cb( $links, $file ) {
+	if ( $file == plugin_basename( __FILE__ ) ) {
+		$row_meta = array(
+			'support' => '<a href="http://web-profile.net/wordpress/plugins/iframe/" target="_blank">' . __( 'Iframe', 'iframe' ) . '</a>',
+			'donate' => '<a href="http://web-profile.net/donate/" target="_blank">' . __( 'Donate', 'iframe' ) . '</a>'
+		);
+		$links = array_merge( $links, $row_meta );
+	}
+	return (array) $links;
+}
+add_filter( 'plugin_row_meta', 'iframe_plugin_row_meta_cb', 10, 2 );

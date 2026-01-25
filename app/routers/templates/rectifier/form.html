@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Rectifier Calculator{% endblock %}
+
+{% block extra_style %}
+        .form-section {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+        }
+        .form-section h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 200px 150px 1fr;
+            gap: 10px;
+            margin: 10px 0;
+            align-items: center;
+        }
+        label {
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="number"], select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .unit {
+            color: #777;
+            font-size: 14px;
+        }
+        .radio-group {
+            display: flex;
+            gap: 20px;
+        }
+        .radio-group label {
+            font-weight: normal;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 20px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .info {
+            background-color: #e7f3fe;
+            border-left: 4px solid #2196F3;
+            padding: 12px;
+            margin: 20px 0;
+        }
+{% endblock %}
+
+{% block content %}
+    <div class="container">
+        <h1>🔌 Rectifier Discharge Calculator</h1>
+
+        <div class="info">
+            <strong>ℹ️ About:</strong> This calculator analyzes the discharge behavior of a rectifier charging
+            an electrolytic capacitor.
+            <p>
+            There are two discharge modes, constant current and constant power. The constant current mode
+            is useful for linear regulators. The constant power mode is useful for switching power supplies.
+            </p>
+            <p>
+            The calculator plots the discharge curve, lowest voltage vs capacitance,
+            and the FFT spectrum of the discharge curve. From the graphs you can
+            the select the needed capacitance, and it also will tell you what ripple current you can expect.
+            </p>
+            See the <a href="/app_rectifier/math?standalone={{ 'true' if standalone else 'false' }}"> mathematics </a> for more details.
+        </div>
+
+        <form action="/app_rectifier/plot" method="post">
+            <!-- Hidden field to preserve standalone mode -->
+            <input type="hidden" name="standalone" value="{{ 'true' if standalone else 'false' }}">
+
+            <div class="form-section">
+                <h3>AC Input Parameters</h3>
+                <div class="form-row">
+                    <label for="frequency">Frequency:</label>
+                    <input type="number" id="frequency" name="frequency" step="0.1" value="{{ frequency }}" required>
+                    <span class="unit">Hz (typically 50 or 60 Hz)</span>
+                </div>
+                <div class="form-row">
+                    <label for="voltage">Peak Voltage (U0):</label>
+                    <input type="number" id="voltage" name="voltage" step="1" value="{{ voltage }}" required>
+                    <span class="unit">V (e.g., 325V for 230V RMS AC)</span>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3>Rectifier Configuration</h3>
+                <div class="form-row">
+                    <label for="nphase">Number of Phases:</label>
+                    <select id="nphase" name="nphase" required>
+                        <option value="1" {% if nphase == 1 %}selected{% endif %}>1 - Half-wave single phase</option>
+                        <option value="2" {% if nphase == 2 %}selected{% endif %}>2 - Full-wave single phase</option>
+                        <option value="3" {% if nphase == 3 %}selected{% endif %}>3 - Three-phase</option>
+                        <option value="6" {% if nphase == 6 %}selected{% endif %}>6 - 6-phase</option>
+                        <option value="6" {% if nphase == 12 %}selected{% endif %}>12 - 12-phase</option>
+                        <option value="6" {% if nphase == 24 %}selected{% endif %}>24 - 24-phase</option>
+                    </select>
+                    <span class="unit">Rectifier type</span>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3>Load Parameters</h3>
+                <div class="form-row">
+                    <label for="model_type">Discharge Model:</label>
+                    <select id="model_type" name="model_type" required onchange="updateLoadLabel()">
+                        <option value="current" {% if model_type == 'current' %}selected{% endif %}>Constant Current</option>
+                        <option value="power" {% if model_type == 'power' %}selected{% endif %}>Constant Power</option>
+                    </select>
+                    <span class="unit" id="model_description">For resistive loads, linear regulators</span>
+                </div>
+                <div class="form-row">
+                    <label for="load_param" id="load_label">Load Current:</label>
+                    <input type="number" id="load_param" name="load_param" step="0.001" value="{{ load_param }}" required>
+                    <span class="unit" id="load_unit">A (Amperes)</span>
+                </div>
+                <div class="form-row">
+                    <label for="max_load" id="max_load_label">Max Load Current:</label>
+                    <input type="number" id="max_load" name="max_load" step="0.01" value="{{ max_load }}" required>
+                    <span class="unit" id="max_load_unit">A (for slider range)</span>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3>Plot Selection</h3>
+                <div class="form-row">
+                    <label>Plot Type:</label>
+                    <div class="radio-group">
+                        <label>
+                            <input type="radio" name="plot_type" value="discharge" {% if plot_type == 'discharge' %}checked{% endif %}>
+                            Discharge Curve (for specific capacitance)
+                        </label>
+                        <label>
+                            <input type="radio" name="plot_type" value="u1c" {% if plot_type == 'u1c' %}checked{% endif %}>
+                            U1 vs Capacitance (performance comparison)
+                        </label>
+                        <label>
+                            <input type="radio" name="plot_type" value="fft" {% if plot_type == 'fft' %}checked{% endif %}>
+                            FFT Spectrum (harmonic analysis)
+                        </label>
+                        <label>
+                            <input type="radio" name="plot_type" value="both" {% if plot_type == 'both' %}checked{% endif %}>
+                            All Plots
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <label for="capacitance">Capacitance:</label>
+                    <input type="number" id="capacitance" name="capacitance" step="1" value="{{ capacitance }}" required>
+                    <span class="unit">μF (for discharge curve)</span>
+                </div>
+
+                <div class="form-row">
+                    <label for="cmax">Max Capacitance:</label>
+                    <input type="number" id="cmax" name="cmax" step="1" value="{{ cmax }}" required>
+                    <span class="unit">μF (for U1 vs C plot)</span>
+                </div>
+            </div>
+
+            <button type="submit">Calculate & Plot</button>
+        </form>
+    </div>
+{% endblock %}
+
+{% block extra_script %}
+    <script src="/static/js/rectifier/form-utils.js"></script>
+{% endblock %}
+
