@@ -238,7 +238,9 @@ $$
 Phase margin at the new crossover must meet or exceed the target:
 
 $$
-\text{PM}(A_{\text{ratio}} \cdot A_1, \omega_{z,\text{ratio}} \cdot \omega_{c1}, \alpha) \ge \phi_m
+\text{PM}(A_{\text{ratio}} \cdot A_1, 
+\omega_{z,\text{ratio}} \cdot \omega_{c1}, 
+\alpha) \ge \phi_m
 $$
 
 ### Bounds

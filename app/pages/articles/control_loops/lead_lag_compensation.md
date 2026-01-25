@@ -84,7 +84,7 @@ Using [COBYLA optimization](/lead_lag_compensator/lead_lag_design.py) with norma
 
 Yeah, you read that right. **158% more gain** at 75° phase margin.
 
-![DC Gain Improvement vs Phase Margin](/static/blog/dc_gain_vs_margin.png)
+![DC Gain Improvement vs Phase Margin](/static/blog/dc_gain_vs_margin.png){: style="width: 80%; display: block; margin: 0 auto;"}
 
 *(Higher phase margin = more room to play = bigger improvements)*
 
