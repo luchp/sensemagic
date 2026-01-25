@@ -119,7 +119,7 @@ Spoiler: It's a 3D constrained optimization problem that would make your calculu
 
 ## Show Me the Code (For the Practical)
 
-Python implementation: [`LeadCompensatorDesign`](/lead_lag_compensator/lead_lag_design.py)
+Python implementation: [`LeadCompensatorDesign`](https://github.com/luchp/sensemagic/blob/main/app/pages/lead_lag_compensator/lead_lag_design.py)
 
 ```python
 from lead_lag_design import LeadCompensatorDesign
@@ -151,7 +151,7 @@ Features:
 - ✅ **No silent failures** (raises exceptions if infeasible)
 - ✅ Clean separation (import without matplotlib)
 
-[See full examples →](/lead_lag_compensator/example_usage.py)
+[See full examples →](https://github.com/luchp/sensemagic/blob/main/app/pages/lead_lag_compensator/example_usage.py)
 
 ---
 

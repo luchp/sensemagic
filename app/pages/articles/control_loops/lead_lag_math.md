@@ -337,7 +337,7 @@ This provides phase lead in the critical frequency region while maintaining unit
 
 ## 9. Implementation
 
-This derivation is implemented in `lead_lag_design.py`:
+This derivation is implemented in [`lead_lag_design.py`](https://github.com/luchp/sensemagic/blob/main/app/pages/lead_lag_compensator/lead_lag_design.py):
 
 ```python
 from lead_lag_design import LeadCompensatorDesign
