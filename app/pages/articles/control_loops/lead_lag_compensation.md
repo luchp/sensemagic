@@ -1,7 +1,7 @@
 # 🚀 Delay Series · Part 3 — How to *Legally Cheat* Physics and Get More Gain
 
-*Part 1:* [Delay quietly murders your bandwidth](/app_articles/control-loops/control-loop-bandwidth) (spoiler: that 1/10 rule).  
-*Part 2:* [Architecture tricks to hide delay](/app_articles/control-loops/improving-control-loop-bandwidth) (cascaded loops, sensor fusion).  
+*Part 1:* [Delay quietly murders your bandwidth](/app_articles/control-loops/control-loop-bandwidth) (spoiler: that 1/10 rule).
+*Part 2:* [Architecture tricks to hide delay](/app_articles/control-loops/improving-control-loop-bandwidth) (cascaded loops, sensor fusion).
 
 **Part 3 is where we get cheeky:** What if you could increase your PID gain by 39-158% *while maintaining the same phase margin*? 
 
