@@ -14,56 +14,31 @@ from pathlib import Path
 
 class LocalRedirectSession(Session):
     """
-    A requests Session that rewrites redirects pointing to the public domain
+    A requests Session that rewrites any redirect pointing to the public domain
     back to the local base_url (e.g. http://127.0.0.1:7080).
 
-    Apache on port 7080 redirects HTTP → HTTPS for the public hostname.
+    Apache on port 7080 issues HTTP→HTTPS redirects for the public hostname.
     Without this, requests would follow the redirect to https://sensemagic.nl:443
-    which is unreachable from the server itself.
+    which is unreachable from the server itself (nginx only binds to the public IP).
     """
 
     def __init__(self, public_domain: str, local_base_url: str):
         super().__init__()
-        self.public_domain = public_domain          # e.g. "sensemagic.nl"
-        self.local_base_url = local_base_url.rstrip('/')  # e.g. "http://127.0.0.1:7080"
+        self.public_domain = public_domain                    # e.g. "sensemagic.nl"
+        self.local_base_url = local_base_url.rstrip('/')      # e.g. "http://127.0.0.1:7080"
+        # Rewrite Location header on every response before requests follows it
+        self.hooks['response'].append(self._rewrite_location)
 
-    def rebuild_url(self, url: str) -> str:
-        """Replace any reference to the public domain with the local base URL."""
-        for scheme in ("https://", "http://"):
-            candidate = f"{scheme}{self.public_domain}"
-            if url.startswith(candidate):
-                return self.local_base_url + url[len(candidate):]
-        return url
-
-    def send(self, request, **kwargs):
-        # Rewrite the outgoing URL in case it somehow contains the public domain
-        request.url = self.rebuild_url(request.url)
-
-        # Execute without following redirects so we can intercept them
-        kwargs['allow_redirects'] = False
-        response = super().send(request, **kwargs)
-
-        # Follow redirects manually, rewriting Location each time (max 10 hops)
-        hops = 0
-        while response.is_redirect and hops < 10:
-            location = response.headers.get('Location', '')
-            new_url = self.rebuild_url(location)
-            new_request = response.request.copy()
-            new_request.url = new_url
-            # Prepare the new request properly
-            from requests import PreparedRequest
-            prepped = PreparedRequest()
-            prepped.prepare_url(new_url, None)
-            prepped.prepare_headers(new_request.headers)
-            prepped.prepare_body(None, None)
-            prepped.method = new_request.method if response.status_code not in (301, 302, 303) else 'GET'
-            prepped.url = new_url
-            prepped.headers = new_request.headers
-            prepped.body = new_request.body if prepped.method != 'GET' else None
-            response = super().send(prepped, **kwargs)
-            hops += 1
-
-        return response
+    def _rewrite_location(self, response, **kwargs):
+        """Rewrite Location header so redirects stay on localhost."""
+        location = response.headers.get('Location', '')
+        if location:
+            for scheme in ('https://', 'http://'):
+                candidate = f"{scheme}{self.public_domain}"
+                if location.startswith(candidate):
+                    new_location = self.local_base_url + location[len(candidate):]
+                    response.headers['Location'] = new_location
+                    break
 
 # Import shared utilities
 sys.path.insert(0, str(Path(__file__).parent))
