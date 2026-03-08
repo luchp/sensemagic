@@ -12,6 +12,7 @@ import urllib3
 from pathlib import Path
 
 
+
 # Import shared utilities
 sys.path.insert(0, str(Path(__file__).parent))
 from shared.article_utils import discover_articles, extract_metadata_from_markdown
@@ -24,6 +25,20 @@ from shared.router_utils import (
 
 # Disable SSL warnings when verify_ssl=False
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+
+class _NoRedirectSession(Session):
+    """Session that never follows redirects.
+
+    Apache on port 7080 issues HTTP→HTTPS 301 redirects to sensemagic.nl:443
+    which is unreachable from the server itself (nginx only binds to the
+    public IP, not 127.0.0.1).  By refusing to follow redirects we get the
+    301 response back directly so the caller can detect and report it.
+    """
+
+    def send(self, request, **kwargs):
+        kwargs['allow_redirects'] = False
+        return super().send(request, **kwargs)
 
 
 class WordPressSync:
@@ -74,7 +89,7 @@ class WordPressSync:
         }
 
         # Use a session with the correct headers and SSL settings
-        self.session = Session()
+        self.session = _NoRedirectSession()
         self.session.headers.update(self.headers)
         self.session.verify = self.verify_ssl
 
@@ -82,30 +97,85 @@ class WordPressSync:
         print(f"SSL Verification: {'enabled' if self.verify_ssl else 'disabled'}")
 
     def test_connection(self) -> bool:
-        """Test WordPress API connection"""
+        """Test WordPress API connection, with automatic fallback.
+
+        If the configured base_url returns a 301 redirect (common when Apache
+        forces HTTP→HTTPS), we automatically fall back to connecting via the
+        public HTTPS URL.
+        """
+        url = f"{self.base_url}/wp-json/wp/v2/pages?per_page=1"
         try:
-            response = self.session.get(
-                f"{self.base_url}/wp-json/wp/v2/pages?per_page=1"
-            )
-            if response.ok:
+            response = self.session.get(url)
+
+            # If we got a 301 redirect, the base_url isn't usable
+            # (Apache redirects http → https and we can't follow it locally).
+            # Try falling back to the public HTTPS URL.
+            if response.is_redirect:
+                public_url = f"https://{self.domain}"
+                if self.base_url.rstrip('/') != public_url:
+                    print(f"  ⚠ Got {response.status_code} redirect from {self.base_url}, "
+                          f"trying {public_url} ...", file=sys.stderr)
+                    self.base_url = public_url
+                    self.wp_url = f"{self.base_url}/wp-json/wp/v2"
+                    # For public URL we don't need Host override
+                    self.session.headers.pop('Host', None)
+                    self.session.headers.pop('X-Forwarded-Proto', None)
+                    self.session.headers.pop('X-Forwarded-Port', None)
+                    try:
+                        response = self.session.get(
+                            f"{self.base_url}/wp-json/wp/v2/pages?per_page=1"
+                        )
+                    except Exception as e2:
+                        print(f"  ⚠ Public URL also failed: {e2}", file=sys.stderr)
+                        # Last resort: try via the server's own public IP
+                        return self._try_via_public_ip()
+
+            if response.ok and not response.is_redirect:
+                # Verify it's actually JSON (not an HTML redirect page)
+                try:
+                    response.json()
+                except ValueError:
+                    print(f"✗ WordPress returned non-JSON (status {response.status_code})", file=sys.stderr)
+                    return False
                 print(f"✓ Connected to WordPress successfully!")
                 print(f"  Can access pages endpoint - authentication working")
                 return True
             else:
-                response = self.session.get(
-                    f"{self.base_url}/wp-json/wp/v2/users/me"
-                )
-                if response.ok:
-                    user_data = response.json()
-                    print(f"✓ Connected to WordPress as: {user_data.get('name', 'Unknown')}")
-                    return True
-                else:
-                    print(f"✗ WordPress connection failed: {response.status_code}", file=sys.stderr)
-                    print(f"  Response: {response.text[:300]}", file=sys.stderr)
-                    return False
+                print(f"✗ WordPress connection failed: {response.status_code}", file=sys.stderr)
+                print(f"  Response: {response.text[:300]}", file=sys.stderr)
+                return False
         except Exception as e:
             print(f"✗ WordPress connection error: {e}", file=sys.stderr)
-            return False
+            # Try fallback via public IP
+            return self._try_via_public_ip()
+
+    def _try_via_public_ip(self) -> bool:
+        """Last-resort fallback: resolve domain to IP and connect directly."""
+        import socket
+        try:
+            ip = socket.gethostbyname(self.domain)
+            public_url = f"https://{ip}"
+            print(f"  ⚠ Trying direct IP connection: {public_url} ...", file=sys.stderr)
+            self.base_url = public_url
+            self.wp_url = f"{self.base_url}/wp-json/wp/v2"
+            # Need Host header for the IP-based URL
+            self.session.headers['Host'] = self.domain
+            # Remove forwarded headers (not needed for real HTTPS)
+            self.session.headers.pop('X-Forwarded-Proto', None)
+            self.session.headers.pop('X-Forwarded-Port', None)
+            response = self.session.get(
+                f"{self.base_url}/wp-json/wp/v2/pages?per_page=1"
+            )
+            if response.ok and not response.is_redirect:
+                try:
+                    response.json()
+                except ValueError:
+                    return False
+                print(f"✓ Connected to WordPress via {ip}!")
+                return True
+        except Exception as e:
+            print(f"✗ Direct IP connection also failed: {e}", file=sys.stderr)
+        return False
 
     def get_menus(self) -> list:
         """
