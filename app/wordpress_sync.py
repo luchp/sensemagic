@@ -65,7 +65,8 @@ class WordPressSync:
         token = base64.b64encode(credentials.encode()).decode()
         self.headers = {
             "Authorization": f"Basic {token}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Host": self.domain,  # Required when hitting 127.0.0.1 directly so Apache's vhost matches
         }
 
         print(f"WordPress API URL: {self.wp_url}")
