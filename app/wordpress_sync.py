@@ -39,10 +39,13 @@ class LocalRedirectSession(Session):
         url = self._rewrite(url)
         response = super().request(method, url, **kwargs)
         # Follow up to 5 redirects manually, rewriting each Location
+        # Preserve the original method and payload (Apache's trailing-slash
+        # redirects must keep POST as POST for the WP REST API to work)
         hops = 0
         while response.is_redirect and hops < 5:
             location = response.headers.get('Location', '')
             new_url = self._rewrite(location)
+            print(f"  [redirect {response.status_code}] {method} {url} → {new_url}")
             response = super().request(method, new_url, **kwargs)
             hops += 1
         return response
@@ -153,7 +156,11 @@ class WordPressSync:
                 f"{self.base_url}/wp-json/wp/v2/menus"
             )
             if response.ok:
-                menus = response.json()
+                try:
+                    menus = response.json()
+                except ValueError:
+                    print(f"✗ Non-JSON response getting menus (status {response.status_code}): {response.text[:300]}", file=sys.stderr)
+                    return []
                 return menus
             else:
                 print(f"✗ Failed to get menus: {response.status_code}", file=sys.stderr)
@@ -354,7 +361,11 @@ class WordPressSync:
                 params={"slug": slug}
             )
             if response.ok:
-                pages = response.json()
+                try:
+                    pages = response.json()
+                except ValueError:
+                    print(f"  ⚠ Non-JSON response for page '{slug}' (status {response.status_code}): {response.text[:200]}", file=sys.stderr)
+                    return None
                 return pages[0] if pages else None
             return None
         except Exception as e:
@@ -388,12 +399,16 @@ class WordPressSync:
                 json=page_data
             )
             if response.ok:
-                page = response.json()
+                try:
+                    page = response.json()
+                except ValueError:
+                    print(f"✗ Non-JSON response creating '{title}' (status {response.status_code}): {response.text[:300]}", file=sys.stderr)
+                    return False
                 print(f"✓ Created WordPress page: {title} (ID: {page['id']}, slug: {slug})")
                 return True
             else:
                 print(f"✗ Failed to create page {title}: {response.status_code}", file=sys.stderr)
-                print(f"  Response: {response.text}", file=sys.stderr)
+                print(f"  Response: {response.text[:300]}", file=sys.stderr)
                 return False
         except Exception as e:
             print(f"✗ Error creating page {title}: {e}", file=sys.stderr)
