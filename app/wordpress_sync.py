@@ -4,11 +4,66 @@ Uses WordPress REST API to create/update pages based on discovered routers.
 """
 
 import requests
+from requests import Session
 import base64
 from typing import Dict, Optional
 import sys
 import urllib3
 from pathlib import Path
+
+
+class LocalRedirectSession(Session):
+    """
+    A requests Session that rewrites redirects pointing to the public domain
+    back to the local base_url (e.g. http://127.0.0.1:7080).
+
+    Apache on port 7080 redirects HTTP → HTTPS for the public hostname.
+    Without this, requests would follow the redirect to https://sensemagic.nl:443
+    which is unreachable from the server itself.
+    """
+
+    def __init__(self, public_domain: str, local_base_url: str):
+        super().__init__()
+        self.public_domain = public_domain          # e.g. "sensemagic.nl"
+        self.local_base_url = local_base_url.rstrip('/')  # e.g. "http://127.0.0.1:7080"
+
+    def rebuild_url(self, url: str) -> str:
+        """Replace any reference to the public domain with the local base URL."""
+        for scheme in ("https://", "http://"):
+            candidate = f"{scheme}{self.public_domain}"
+            if url.startswith(candidate):
+                return self.local_base_url + url[len(candidate):]
+        return url
+
+    def send(self, request, **kwargs):
+        # Rewrite the outgoing URL in case it somehow contains the public domain
+        request.url = self.rebuild_url(request.url)
+
+        # Execute without following redirects so we can intercept them
+        kwargs['allow_redirects'] = False
+        response = super().send(request, **kwargs)
+
+        # Follow redirects manually, rewriting Location each time (max 10 hops)
+        hops = 0
+        while response.is_redirect and hops < 10:
+            location = response.headers.get('Location', '')
+            new_url = self.rebuild_url(location)
+            new_request = response.request.copy()
+            new_request.url = new_url
+            # Prepare the new request properly
+            from requests import PreparedRequest
+            prepped = PreparedRequest()
+            prepped.prepare_url(new_url, None)
+            prepped.prepare_headers(new_request.headers)
+            prepped.prepare_body(None, None)
+            prepped.method = new_request.method if response.status_code not in (301, 302, 303) else 'GET'
+            prepped.url = new_url
+            prepped.headers = new_request.headers
+            prepped.body = new_request.body if prepped.method != 'GET' else None
+            response = super().send(prepped, **kwargs)
+            hops += 1
+
+        return response
 
 # Import shared utilities
 sys.path.insert(0, str(Path(__file__).parent))
@@ -69,29 +124,28 @@ class WordPressSync:
             "Host": self.domain,  # Required when hitting 127.0.0.1 directly so Apache's vhost matches
         }
 
+        # Use a session that rewrites any redirect back to our local base_url
+        # (Apache redirects HTTP→HTTPS; we must stay on 127.0.0.1:7080)
+        self.session = LocalRedirectSession(self.domain, self.base_url)
+        self.session.headers.update(self.headers)
+        self.session.verify = self.verify_ssl
+
         print(f"WordPress API URL: {self.wp_url}")
         print(f"SSL Verification: {'enabled' if self.verify_ssl else 'disabled'}")
 
     def test_connection(self) -> bool:
         """Test WordPress API connection"""
         try:
-            # Try to list pages - this tests authentication without accessing user info
-            # which might be blocked by security plugins
-            response = requests.get(
-                f"{self.base_url}/wp-json/wp/v2/pages?per_page=1",
-                headers=self.headers,
-                verify=self.verify_ssl
+            response = self.session.get(
+                f"{self.base_url}/wp-json/wp/v2/pages?per_page=1"
             )
             if response.ok:
                 print(f"✓ Connected to WordPress successfully!")
                 print(f"  Can access pages endpoint - authentication working")
                 return True
             else:
-                # If pages endpoint fails, try users/me as fallback
-                response = requests.get(
-                    f"{self.base_url}/wp-json/wp/v2/users/me",
-                    headers=self.headers,
-                    verify=self.verify_ssl
+                response = self.session.get(
+                    f"{self.base_url}/wp-json/wp/v2/users/me"
                 )
                 if response.ok:
                     user_data = response.json()
@@ -113,10 +167,8 @@ class WordPressSync:
         List of menu dictionaries with id, name, slug
         """
         try:
-            response = requests.get(
-                f"{self.base_url}/wp-json/wp/v2/menus",
-                headers=self.headers,
-                verify=self.verify_ssl
+            response = self.session.get(
+                f"{self.base_url}/wp-json/wp/v2/menus"
             )
             if response.ok:
                 menus = response.json()
@@ -221,11 +273,9 @@ class WordPressSync:
             payload["parent"] = parent_id
 
         try:
-            response = requests.post(
+            response = self.session.post(
                 endpoint,
-                json=payload,
-                headers=self.headers,
-                verify=self.verify_ssl
+                json=payload
             )
 
             if response.ok:
@@ -252,11 +302,9 @@ class WordPressSync:
             List of matching menu items
         """
         try:
-            response = requests.get(
+            response = self.session.get(
                 f"{self.base_url}/wp-json/wp/v2/menu-items",
-                params={"menus": menu_id, "per_page": 100},
-                headers=self.headers,
-                verify=self.verify_ssl
+                params={"menus": menu_id, "per_page": 100}
             )
             if response.ok:
                 all_items = response.json()
@@ -288,11 +336,9 @@ class WordPressSync:
             List of matching menu items
         """
         try:
-            response = requests.get(
+            response = self.session.get(
                 f"{self.base_url}/wp-json/wp/v2/menu-items",
-                params={"menus": menu_id, "per_page": 100},
-                headers=self.headers,
-                verify=self.verify_ssl
+                params={"menus": menu_id, "per_page": 100}
             )
             if response.ok:
                 all_items = response.json()
@@ -321,11 +367,9 @@ class WordPressSync:
         Page data dictionary or None if not found
         """
         try:
-            response = requests.get(
+            response = self.session.get(
                 f"{self.wp_url}/pages",
-                params={"slug": slug},
-                headers=self.headers,
-                verify=self.verify_ssl
+                params={"slug": slug}
             )
             if response.ok:
                 pages = response.json()
@@ -357,11 +401,9 @@ class WordPressSync:
         }
 
         try:
-            response = requests.post(
+            response = self.session.post(
                 f"{self.wp_url}/pages",
-                json=page_data,
-                headers=self.headers,
-                verify=self.verify_ssl
+                json=page_data
             )
             if response.ok:
                 page = response.json()
@@ -393,11 +435,9 @@ class WordPressSync:
         }
 
         try:
-            response = requests.post(
+            response = self.session.post(
                 f"{self.wp_url}/pages/{page_id}",
-                json=page_data,
-                headers=self.headers,
-                verify=self.verify_ssl
+                json=page_data
             )
             if response.ok:
                 print(f"✓ Updated WordPress page: {title} (ID: {page_id})")
