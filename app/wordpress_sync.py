@@ -14,31 +14,39 @@ from pathlib import Path
 
 class LocalRedirectSession(Session):
     """
-    A requests Session that rewrites any redirect pointing to the public domain
-    back to the local base_url (e.g. http://127.0.0.1:7080).
-
-    Apache on port 7080 issues HTTP→HTTPS redirects for the public hostname.
-    Without this, requests would follow the redirect to https://sensemagic.nl:443
-    which is unreachable from the server itself (nginx only binds to the public IP).
+    A requests Session that never follows redirects automatically.
+    Instead, on a 3xx response it rewrites the Location URL back to the
+    local base_url and retries once.  This prevents Apache's HTTP→HTTPS
+    redirect from escaping to https://sensemagic.nl:443 which is only
+    reachable from the public internet.
     """
 
     def __init__(self, public_domain: str, local_base_url: str):
         super().__init__()
-        self.public_domain = public_domain                    # e.g. "sensemagic.nl"
-        self.local_base_url = local_base_url.rstrip('/')      # e.g. "http://127.0.0.1:7080"
-        # Rewrite Location header on every response before requests follows it
-        self.hooks['response'].append(self._rewrite_location)
+        self.public_domain = public_domain                # e.g. "sensemagic.nl"
+        self.local_base_url = local_base_url.rstrip('/')  # e.g. "http://127.0.0.1:7080"
+        self.max_redirects = 0  # never auto-follow
 
-    def _rewrite_location(self, response, **kwargs):
-        """Rewrite Location header so redirects stay on localhost."""
-        location = response.headers.get('Location', '')
-        if location:
-            for scheme in ('https://', 'http://'):
-                candidate = f"{scheme}{self.public_domain}"
-                if location.startswith(candidate):
-                    new_location = self.local_base_url + location[len(candidate):]
-                    response.headers['Location'] = new_location
-                    break
+    def _rewrite(self, url: str) -> str:
+        """Rewrite any public-domain URL to the local base URL."""
+        for scheme in ('https://', 'http://'):
+            candidate = f"{scheme}{self.public_domain}"
+            if url.startswith(candidate):
+                return self.local_base_url + url[len(candidate):]
+        return url
+
+    def request(self, method, url, **kwargs):
+        kwargs['allow_redirects'] = False
+        url = self._rewrite(url)
+        response = super().request(method, url, **kwargs)
+        # Follow up to 5 redirects manually, rewriting each Location
+        hops = 0
+        while response.is_redirect and hops < 5:
+            location = response.headers.get('Location', '')
+            new_url = self._rewrite(location)
+            response = super().request(method, new_url, **kwargs)
+            hops += 1
+        return response
 
 # Import shared utilities
 sys.path.insert(0, str(Path(__file__).parent))
