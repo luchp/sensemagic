@@ -12,44 +12,6 @@ import urllib3
 from pathlib import Path
 
 
-class LocalRedirectSession(Session):
-    """
-    A requests Session that never follows redirects automatically.
-    Instead, on a 3xx response it rewrites the Location URL back to the
-    local base_url and retries once.  This prevents Apache's HTTP→HTTPS
-    redirect from escaping to https://sensemagic.nl:443 which is only
-    reachable from the public internet.
-    """
-
-    def __init__(self, public_domain: str, local_base_url: str):
-        super().__init__()
-        self.public_domain = public_domain                # e.g. "sensemagic.nl"
-        self.local_base_url = local_base_url.rstrip('/')  # e.g. "http://127.0.0.1:7080"
-
-    def _rewrite(self, url: str) -> str:
-        """Rewrite any public-domain URL to the local base URL."""
-        for scheme in ('https://', 'http://'):
-            candidate = f"{scheme}{self.public_domain}"
-            if url.startswith(candidate):
-                return self.local_base_url + url[len(candidate):]
-        return url
-
-    def request(self, method, url, **kwargs):
-        kwargs['allow_redirects'] = False
-        url = self._rewrite(url)
-        response = super().request(method, url, **kwargs)
-        # Follow up to 5 redirects manually, rewriting each Location
-        # Preserve the original method and payload (Apache's trailing-slash
-        # redirects must keep POST as POST for the WP REST API to work)
-        hops = 0
-        while response.is_redirect and hops < 5:
-            location = response.headers.get('Location', '')
-            new_url = self._rewrite(location)
-            print(f"  [redirect {response.status_code}] {method} {url} → {new_url}")
-            response = super().request(method, new_url, **kwargs)
-            hops += 1
-        return response
-
 # Import shared utilities
 sys.path.insert(0, str(Path(__file__).parent))
 from shared.article_utils import discover_articles, extract_metadata_from_markdown
@@ -107,11 +69,12 @@ class WordPressSync:
             "Authorization": f"Basic {token}",
             "Content-Type": "application/json",
             "Host": self.domain,  # Required when hitting 127.0.0.1 directly so Apache's vhost matches
+            "X-Forwarded-Proto": "https",  # Tell Apache we're already on HTTPS (prevents HTTP→HTTPS redirect)
+            "X-Forwarded-Port": "443",
         }
 
-        # Use a session that rewrites any redirect back to our local base_url
-        # (Apache redirects HTTP→HTTPS; we must stay on 127.0.0.1:7080)
-        self.session = LocalRedirectSession(self.domain, self.base_url)
+        # Use a session with the correct headers and SSL settings
+        self.session = Session()
         self.session.headers.update(self.headers)
         self.session.verify = self.verify_ssl
 
