@@ -25,7 +25,6 @@ class LocalRedirectSession(Session):
         super().__init__()
         self.public_domain = public_domain                # e.g. "sensemagic.nl"
         self.local_base_url = local_base_url.rstrip('/')  # e.g. "http://127.0.0.1:7080"
-        self.max_redirects = 0  # never auto-follow
 
     def _rewrite(self, url: str) -> str:
         """Rewrite any public-domain URL to the local base URL."""
