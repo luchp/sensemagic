@@ -1,16 +1,15 @@
 """
 WordPress synchronization module for FastAPI routers.
-Uses WordPress REST API to create/update pages based on discovered routers.
+Uses WP-CLI (command-line) to create/update pages and menus,
+bypassing Apache/nginx entirely.
 """
 
-import requests
-from requests import Session
+import json
+import subprocess
 import base64
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 import sys
-import urllib3
 from pathlib import Path
-
 
 
 # Import shared utilities
@@ -23,461 +22,253 @@ from shared.router_utils import (
     separate_articles_from_apps
 )
 
-# Disable SSL warnings when verify_ssl=False
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-
-class _NoRedirectSession(Session):
-    """Session that never follows redirects.
-
-    Apache on port 7080 issues HTTP→HTTPS 301 redirects to sensemagic.nl:443
-    which is unreachable from the server itself (nginx only binds to the
-    public IP, not 127.0.0.1).  By refusing to follow redirects we get the
-    301 response back directly so the caller can detect and report it.
-    """
-
-    def send(self, request, **kwargs):
-        kwargs['allow_redirects'] = False
-        return super().send(request, **kwargs)
-
 
 class WordPressSync:
-    """Sync FastAPI routers to WordPress pages via REST API"""
+    """Sync FastAPI routers to WordPress pages via WP-CLI"""
 
-    def __init__(self, domain: str, wp_user: str, wp_app_password: str,
+    # WP-CLI configuration
+    WP_PATH = "/var/www/vhosts/sensemagic.nl/httpdocs"
+    PHP_BIN = "/opt/plesk/php/8.3/bin/php"
+    WP_CLI = "/usr/local/bin/wp"
+
+    def __init__(self, domain: str, wp_user: str = None, wp_app_password: str = None,
                  base_url: str = None, verify_ssl: bool = None):
         """
         Initialize WordPress sync
 
         Parameters:
         domain: Domain name (e.g., "sensemagic.nl") - used for URLs in page content
-        wp_user: WordPress username
-        wp_app_password: WordPress application password (generated in WP admin)
-        base_url: Base URL for WordPress API (default: https://{domain})
-        verify_ssl: Verify SSL certificates (default: False for same-server connections)
+        wp_user: WordPress username (kept for API compatibility, not used by WP-CLI)
+        wp_app_password: WordPress application password (kept for API compatibility)
+        base_url: Base URL (kept for API compatibility)
+        verify_ssl: SSL verification (kept for API compatibility)
         """
         self.domain = domain
-
-        # Determine base URL
-        if base_url:
-            # Use explicitly provided base URL
-            self.base_url = base_url.rstrip('/')
-        else:
-            # Default: use HTTPS with domain
-            self.base_url = f"https://{domain}"
-
-        # Determine SSL verification
-        if verify_ssl is None:
-            # Default: don't verify SSL (common for same-server or self-signed certs)
-            self.verify_ssl = False
-        else:
-            self.verify_ssl = verify_ssl
-
-        self.wp_url = f"{self.base_url}/wp-json/wp/v2"
         self.wp_user = wp_user
-        self.wp_app_password = wp_app_password
 
-        # Create authentication header
-        credentials = f"{wp_user}:{wp_app_password}"
-        token = base64.b64encode(credentials.encode()).decode()
-        self.headers = {
-            "Authorization": f"Basic {token}",
-            "Content-Type": "application/json",
-            "Host": self.domain,  # Required when hitting 127.0.0.1 directly so Apache's vhost matches
-            "X-Forwarded-Proto": "https",  # Tell Apache we're already on HTTPS (prevents HTTP→HTTPS redirect)
-            "X-Forwarded-Port": "443",
-        }
+    def _wp(self, *args, input_data: str = None) -> subprocess.CompletedProcess:
+        """Run a WP-CLI command and return the CompletedProcess result."""
+        cmd = [
+            self.PHP_BIN, self.WP_CLI,
+            f"--path={self.WP_PATH}",
+            "--allow-root",
+        ] + list(args)
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            input=input_data,
+            timeout=30,
+        )
 
-        # Use a session with the correct headers and SSL settings
-        self.session = _NoRedirectSession()
-        self.session.headers.update(self.headers)
-        self.session.verify = self.verify_ssl
-
-        print(f"WordPress API URL: {self.wp_url}")
-        print(f"SSL Verification: {'enabled' if self.verify_ssl else 'disabled'}")
+    def _wp_json(self, *args) -> Optional[any]:
+        """Run a WP-CLI command with --format=json and return parsed JSON, or None on error."""
+        result = self._wp(*args, "--format=json")
+        if result.returncode != 0:
+            print(f"✗ WP-CLI error: {result.stderr.strip()}", file=sys.stderr)
+            return None
+        try:
+            return json.loads(result.stdout)
+        except (json.JSONDecodeError, ValueError):
+            print(f"✗ WP-CLI returned non-JSON: {result.stdout[:200]}", file=sys.stderr)
+            return None
 
     def test_connection(self) -> bool:
-        """Test WordPress API connection, with automatic fallback.
-
-        If the configured base_url returns a 301 redirect (common when Apache
-        forces HTTP→HTTPS), we automatically fall back to connecting via the
-        public HTTPS URL.
-        """
-        url = f"{self.base_url}/wp-json/wp/v2/pages?per_page=1"
-        try:
-            response = self.session.get(url)
-
-            # If we got a 301 redirect, the base_url isn't usable
-            # (Apache redirects http → https and we can't follow it locally).
-            # Try falling back to the public HTTPS URL.
-            if response.is_redirect:
-                public_url = f"https://{self.domain}"
-                if self.base_url.rstrip('/') != public_url:
-                    print(f"  ⚠ Got {response.status_code} redirect from {self.base_url}, "
-                          f"trying {public_url} ...", file=sys.stderr)
-                    self.base_url = public_url
-                    self.wp_url = f"{self.base_url}/wp-json/wp/v2"
-                    # For public URL we don't need Host override
-                    self.session.headers.pop('Host', None)
-                    self.session.headers.pop('X-Forwarded-Proto', None)
-                    self.session.headers.pop('X-Forwarded-Port', None)
-                    try:
-                        response = self.session.get(
-                            f"{self.base_url}/wp-json/wp/v2/pages?per_page=1"
-                        )
-                    except Exception as e2:
-                        print(f"  ⚠ Public URL also failed: {e2}", file=sys.stderr)
-                        # Last resort: try via the server's own public IP
-                        return self._try_via_public_ip()
-
-            if response.ok and not response.is_redirect:
-                # Verify it's actually JSON (not an HTML redirect page)
-                try:
-                    response.json()
-                except ValueError:
-                    print(f"✗ WordPress returned non-JSON (status {response.status_code})", file=sys.stderr)
-                    return False
-                print(f"✓ Connected to WordPress successfully!")
-                print(f"  Can access pages endpoint - authentication working")
-                return True
-            else:
-                print(f"✗ WordPress connection failed: {response.status_code}", file=sys.stderr)
-                print(f"  Response: {response.text[:300]}", file=sys.stderr)
-                return False
-        except Exception as e:
-            print(f"✗ WordPress connection error: {e}", file=sys.stderr)
-            # Try fallback via public IP
-            return self._try_via_public_ip()
-
-    def _try_via_public_ip(self) -> bool:
-        """Last-resort fallback: resolve domain to IP and connect directly."""
-        import socket
-        try:
-            ip = socket.gethostbyname(self.domain)
-            public_url = f"https://{ip}"
-            print(f"  ⚠ Trying direct IP connection: {public_url} ...", file=sys.stderr)
-            self.base_url = public_url
-            self.wp_url = f"{self.base_url}/wp-json/wp/v2"
-            # Need Host header for the IP-based URL
-            self.session.headers['Host'] = self.domain
-            # Remove forwarded headers (not needed for real HTTPS)
-            self.session.headers.pop('X-Forwarded-Proto', None)
-            self.session.headers.pop('X-Forwarded-Port', None)
-            response = self.session.get(
-                f"{self.base_url}/wp-json/wp/v2/pages?per_page=1"
-            )
-            if response.ok and not response.is_redirect:
-                try:
-                    response.json()
-                except ValueError:
-                    return False
-                print(f"✓ Connected to WordPress via {ip}!")
-                return True
-        except Exception as e:
-            print(f"✗ Direct IP connection also failed: {e}", file=sys.stderr)
+        """Test WP-CLI can talk to WordPress"""
+        result = self._wp("post", "list", "--post_type=page", "--posts_per_page=1",
+                          "--fields=ID", "--format=json")
+        if result.returncode == 0:
+            print("✓ Connected to WordPress via WP-CLI")
+            return True
+        print(f"✗ WP-CLI connection failed: {result.stderr.strip()}", file=sys.stderr)
         return False
 
-    def get_menus(self) -> list:
-        """
-        Get all WordPress menus
+    # ------------------------------------------------------------------
+    # Menu helpers
+    # ------------------------------------------------------------------
 
-        Returns:
-        List of menu dictionaries with id, name, slug
-        """
+    def get_menus(self) -> list:
+        """Get all WordPress menus."""
+        result = self._wp("menu", "list", "--format=json")
+        if result.returncode != 0:
+            print(f"✗ Failed to get menus: {result.stderr.strip()}", file=sys.stderr)
+            return []
         try:
-            response = self.session.get(
-                f"{self.base_url}/wp-json/wp/v2/menus"
-            )
-            if response.ok:
-                try:
-                    menus = response.json()
-                except ValueError:
-                    print(f"✗ Non-JSON response getting menus (status {response.status_code}): {response.text[:300]}", file=sys.stderr)
-                    return []
-                return menus
-            else:
-                print(f"✗ Failed to get menus: {response.status_code}", file=sys.stderr)
-                print(f"  Response: {response.text[:300]}", file=sys.stderr)
-                return []
-        except Exception as e:
-            print(f"✗ Error getting menus: {e}", file=sys.stderr)
+            menus = json.loads(result.stdout)
+            # WP-CLI returns: term_id, name, slug, count
+            return [{"id": int(m["term_id"]), "name": m["name"], "slug": m["slug"]} for m in menus]
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"✗ Error parsing menus: {e}", file=sys.stderr)
             return []
 
     def get_menu_id_by_name(self, menu_name: str) -> Optional[int]:
-        """
-        Get menu ID by exact name match
-
-        Args:
-            menu_name: The exact name of the menu to find
-
-        Returns:
-            Menu ID or None if not found
-        """
+        """Get menu ID by exact name match."""
         menus = self.get_menus()
-        if not menus:
-            print("✗ No menus found in WordPress", file=sys.stderr)
-            return None
-
         for menu in menus:
-            if menu.get('name') == menu_name:
-                print(f"✓ Found menu by name: {menu.get('name')} (ID: {menu['id']})")
-                return menu['id']
-
+            if menu["name"] == menu_name:
+                print(f"✓ Found menu by name: {menu['name']} (ID: {menu['id']})")
+                return menu["id"]
         print(f"✗ Menu '{menu_name}' not found", file=sys.stderr)
         return None
 
     def get_primary_menu_id(self, menu_name: Optional[str] = None) -> Optional[int]:
-        """
-        Get the primary menu ID
-
-        Args:
-            menu_name: Optional menu name to match exactly. If provided, will search for this name.
-                      If None, will auto-detect based on common slugs.
-
-        Returns:
-            Menu ID or None if no menus found
-        """
+        """Get the primary menu ID."""
         menus = self.get_menus()
         if not menus:
             print("✗ No menus found in WordPress", file=sys.stderr)
             return None
 
-        # If menu_name is specified, search by exact name
         if menu_name:
             for menu in menus:
-                if menu.get('name') == menu_name:
-                    print(f"✓ Found menu by name: {menu.get('name')} (ID: {menu['id']})")
-                    return menu['id']
+                if menu["name"] == menu_name:
+                    print(f"✓ Found menu by name: {menu['name']} (ID: {menu['id']})")
+                    return menu["id"]
             print(f"✗ Menu '{menu_name}' not found. Available menus:", file=sys.stderr)
             for menu in menus:
-                print(f"  - {menu.get('name')}", file=sys.stderr)
+                print(f"  - {menu['name']}", file=sys.stderr)
             return None
 
-        # Try to find primary menu by slug
         for menu in menus:
-            if menu.get('slug') in ['primary', 'main', 'header']:
-                print(f"✓ Found primary menu: {menu.get('name')} (ID: {menu['id']})")
-                return menu['id']
+            if menu["slug"] in ("primary", "main", "header"):
+                print(f"✓ Found primary menu: {menu['name']} (ID: {menu['id']})")
+                return menu["id"]
 
-        # Fall back to first menu
-        first_menu = menus[0]
-        print(f"✓ Using first available menu: {first_menu.get('name')} (ID: {first_menu['id']})")
-        return first_menu['id']
+        first = menus[0]
+        print(f"✓ Using first available menu: {first['name']} (ID: {first['id']})")
+        return first["id"]
+
+    def _get_all_menu_items(self, menu_name_or_id) -> list:
+        """Get all items in a menu (by name or ID)."""
+        # WP-CLI menu item list needs the menu slug/name, not the term_id.
+        # Resolve the ID to a slug if necessary.
+        menus = self.get_menus()
+        menu_slug = None
+        for m in menus:
+            if m["id"] == menu_name_or_id or m["name"] == str(menu_name_or_id) or m["slug"] == str(menu_name_or_id):
+                menu_slug = m["slug"]
+                break
+        if menu_slug is None:
+            menu_slug = str(menu_name_or_id)
+
+        result = self._wp("menu", "item", "list", menu_slug, "--format=json")
+        if result.returncode != 0:
+            return []
+        try:
+            return json.loads(result.stdout)
+        except (json.JSONDecodeError, ValueError):
+            return []
 
     def add_custom_menu_item(self, menu_id: int, title: str, url: str,
-                            parent_id: int = 0, order: int = 0) -> Optional[dict]:
-        """
-        Add custom link to WordPress menu using native REST API
+                             parent_id: int = 0, order: int = 0) -> Optional[dict]:
+        """Add a custom link to a WordPress menu."""
+        menus = self.get_menus()
+        menu_slug = None
+        for m in menus:
+            if m["id"] == menu_id:
+                menu_slug = m["slug"]
+                break
+        if menu_slug is None:
+            print(f"✗ Menu ID {menu_id} not found", file=sys.stderr)
+            return None
 
-        Args:
-            menu_id: The ID of the menu (nav_menu term_id)
-            title: Menu item display text
-            url: Target URL
-            parent_id: Parent menu item ID (0 for top-level)
-            order: Menu order position
-
-        Returns:
-            Response dict with created menu item details or None on failure
-        """
-        endpoint = f"{self.base_url}/wp-json/wp/v2/menu-items"
-
-        payload = {
-            "title": title,
-            "url": url,
-            "menus": menu_id,  # Menu term ID
-            "status": "publish",
-            "type": "custom",  # Important: marks this as custom link
-            "object": "custom",
-            "menu_order": order
-        }
-
+        cmd = ["menu", "item", "add-custom", menu_slug, title, url, f"--position={order}"]
         if parent_id > 0:
-            payload["parent"] = parent_id
+            cmd.append(f"--parent-id={parent_id}")
+        cmd.append("--porcelain")  # return just the new item ID
 
-        try:
-            response = self.session.post(
-                endpoint,
-                json=payload
-            )
-
-            if response.ok:
-                item = response.json()
-                print(f"✓ Added menu item: {title} (ID: {item['id']})")
-                return item
-            else:
-                print(f"✗ Failed to add menu item {title}: {response.status_code}", file=sys.stderr)
-                print(f"  Response: {response.text[:300]}", file=sys.stderr)
-                return None
-        except Exception as e:
-            print(f"✗ Error adding menu item {title}: {e}", file=sys.stderr)
+        result = self._wp(*cmd)
+        if result.returncode == 0:
+            item_id = result.stdout.strip()
+            print(f"✓ Added menu item: {title} (ID: {item_id})")
+            return {"id": int(item_id) if item_id.isdigit() else 0, "title": title, "url": url}
+        else:
+            print(f"✗ Failed to add menu item {title}: {result.stderr.strip()}", file=sys.stderr)
             return None
 
     def get_menu_items_by_title(self, menu_id: int, title: str) -> list:
-        """
-        Get menu items by title from a specific menu
-
-        Args:
-            menu_id: Menu ID to search in
-            title: Title to search for
-
-        Returns:
-            List of matching menu items
-        """
-        try:
-            response = self.session.get(
-                f"{self.base_url}/wp-json/wp/v2/menu-items",
-                params={"menus": menu_id, "per_page": 100}
-            )
-            if response.ok:
-                all_items = response.json()
-                # Normalize title for comparison (handle HTML entities, case differences)
-                import html
-                normalized_title = html.unescape(title).strip().lower()
-                matching = []
-                for item in all_items:
-                    item_title = item.get('title', {}).get('rendered', '')
-                    normalized_item_title = html.unescape(item_title).strip().lower()
-                    if normalized_item_title == normalized_title:
-                        matching.append(item)
-                return matching
-            return []
-        except Exception as e:
-            print(f"✗ Error searching menu items: {e}", file=sys.stderr)
-            return []
+        """Get menu items matching a title."""
+        import html as html_mod
+        items = self._get_all_menu_items(menu_id)
+        normalized_title = html_mod.unescape(title).strip().lower()
+        matching = []
+        for item in items:
+            item_title = item.get("title", "")
+            if html_mod.unescape(item_title).strip().lower() == normalized_title:
+                matching.append({
+                    "id": int(item.get("db_id", item.get("ID", 0))),
+                    "title": {"rendered": item_title},
+                    "url": item.get("link", item.get("url", "")),
+                })
+        return matching
 
     def get_menu_items_by_url(self, menu_id: int, url: str) -> list:
-        """
-        Get menu items by URL from a specific menu.
-        More reliable than title matching for duplicate detection.
+        """Get menu items matching a URL."""
+        items = self._get_all_menu_items(menu_id)
+        normalized_url = url.strip().lower().rstrip("/")
+        matching = []
+        for item in items:
+            item_url = item.get("link", item.get("url", ""))
+            if item_url.strip().lower().rstrip("/") == normalized_url:
+                matching.append({
+                    "id": int(item.get("db_id", item.get("ID", 0))),
+                    "title": {"rendered": item.get("title", "")},
+                    "url": item_url,
+                })
+        return matching
 
-        Args:
-            menu_id: Menu ID to search in
-            url: URL to search for
-
-        Returns:
-            List of matching menu items
-        """
-        try:
-            response = self.session.get(
-                f"{self.base_url}/wp-json/wp/v2/menu-items",
-                params={"menus": menu_id, "per_page": 100}
-            )
-            if response.ok:
-                all_items = response.json()
-                # Normalize URL for comparison
-                normalized_url = url.strip().lower().rstrip('/')
-                matching = []
-                for item in all_items:
-                    item_url = item.get('url', '')
-                    normalized_item_url = item_url.strip().lower().rstrip('/')
-                    if normalized_item_url == normalized_url:
-                        matching.append(item)
-                return matching
-            return []
-        except Exception as e:
-            print(f"✗ Error searching menu items by URL: {e}", file=sys.stderr)
-            return []
+    # ------------------------------------------------------------------
+    # Page helpers
+    # ------------------------------------------------------------------
 
     def get_page_by_slug(self, slug: str) -> Optional[dict]:
-        """
-        Get WordPress page by slug
-
-        Parameters:
-        slug: Page slug
-
-        Returns:
-        Page data dictionary or None if not found
-        """
-        try:
-            response = self.session.get(
-                f"{self.wp_url}/pages",
-                params={"slug": slug}
-            )
-            if response.ok:
-                try:
-                    pages = response.json()
-                except ValueError:
-                    print(f"  ⚠ Non-JSON response for page '{slug}' (status {response.status_code}): {response.text[:200]}", file=sys.stderr)
-                    return None
-                return pages[0] if pages else None
-            return None
-        except Exception as e:
-            print(f"Error getting page {slug}: {e}", file=sys.stderr)
-            return None
+        """Get WordPress page by slug."""
+        data = self._wp_json("post", "list", "--post_type=page",
+                             f"--name={slug}", "--posts_per_page=1",
+                             "--fields=ID,post_title,post_name")
+        if data and len(data) > 0:
+            page = data[0]
+            return {"id": int(page["ID"]), "title": page.get("post_title", ""), "slug": page.get("post_name", "")}
+        return None
 
     def create_page(self, title: str, slug: str, content: str, parent_id: int = 0) -> bool:
-        """
-        Create a new WordPress page
+        """Create a new WordPress page."""
+        cmd = [
+            "post", "create", "--post_type=page",
+            f"--post_title={title}",
+            f"--post_name={slug}",
+            "--post_status=publish",
+            "--post_content=-",  # read from stdin
+            "--porcelain",
+        ]
+        if parent_id > 0:
+            cmd.append(f"--post_parent={parent_id}")
 
-        Parameters:
-        title: Page title
-        slug: Page slug (URL-friendly name)
-        content: Page content (HTML)
-        parent_id: Parent page ID (0 for top-level)
+        # WP-CLI reads content from stdin when --post_content=-
+        # Actually, WP-CLI doesn't support --post_content=- ; pass content directly
+        cmd.remove("--post_content=-")
+        cmd.append(f"--post_content={content}")
 
-        Returns:
-        True if successful, False otherwise
-        """
-        page_data = {
-            "title": title,
-            "slug": slug,
-            "content": content,
-            "status": "publish",
-            "parent": parent_id
-        }
-
-        try:
-            response = self.session.post(
-                f"{self.wp_url}/pages",
-                json=page_data
-            )
-            if response.ok:
-                try:
-                    page = response.json()
-                except ValueError:
-                    print(f"✗ Non-JSON response creating '{title}' (status {response.status_code}): {response.text[:300]}", file=sys.stderr)
-                    return False
-                print(f"✓ Created WordPress page: {title} (ID: {page['id']}, slug: {slug})")
-                return True
-            else:
-                print(f"✗ Failed to create page {title}: {response.status_code}", file=sys.stderr)
-                print(f"  Response: {response.text[:300]}", file=sys.stderr)
-                return False
-        except Exception as e:
-            print(f"✗ Error creating page {title}: {e}", file=sys.stderr)
+        result = self._wp(*cmd)
+        if result.returncode == 0:
+            page_id = result.stdout.strip()
+            print(f"✓ Created WordPress page: {title} (ID: {page_id}, slug: {slug})")
+            return True
+        else:
+            print(f"✗ Failed to create page {title}: {result.stderr.strip()}", file=sys.stderr)
             return False
 
     def update_page(self, page_id: int, title: str, content: str) -> bool:
-        """
-        Update an existing WordPress page
-
-        Parameters:
-        page_id: WordPress page ID
-        title: New page title
-        content: New page content (HTML)
-
-        Returns:
-        True if successful, False otherwise
-        """
-        page_data = {
-            "title": title,
-            "content": content
-        }
-
-        try:
-            response = self.session.post(
-                f"{self.wp_url}/pages/{page_id}",
-                json=page_data
-            )
-            if response.ok:
-                print(f"✓ Updated WordPress page: {title} (ID: {page_id})")
-                return True
-            else:
-                print(f"✗ Failed to update page {page_id}: {response.status_code}", file=sys.stderr)
-                print(f"  Response: {response.text}", file=sys.stderr)
-                return False
-        except Exception as e:
-            print(f"✗ Error updating page {page_id}: {e}", file=sys.stderr)
+        """Update an existing WordPress page."""
+        result = self._wp(
+            "post", "update", str(page_id),
+            f"--post_title={title}",
+            f"--post_content={content}",
+        )
+        if result.returncode == 0:
+            print(f"✓ Updated WordPress page: {title} (ID: {page_id})")
+            return True
+        else:
+            print(f"✗ Failed to update page {page_id}: {result.stderr.strip()}", file=sys.stderr)
             return False
 
     def sync_routers_to_menu(self, routers: Dict, menu_id: Optional[int] = None,
@@ -997,64 +788,20 @@ function sortApps(sortBy) {
 
 
 def main():
-    """Test WordPress sync functionality"""
+    """Test WordPress sync functionality via WP-CLI"""
 
-    # Load credentials from mysecrets.py file - REQUIRED, no fallback
-    try:
-        import mysecrets
-    except ImportError:
-        print("\n" + "="*70, file=sys.stderr)
-        print("ERROR: mysecrets.py file not found!", file=sys.stderr)
-        print("="*70, file=sys.stderr)
-        print("WordPress sync requires app/mysecrets.py file with credentials.", file=sys.stderr)
-        print("\nTo create it:", file=sys.stderr)
-        print("  1. Copy mysecrets.py.example to mysecrets.py", file=sys.stderr)
-        print("  2. Edit mysecrets.py and add your credentials:", file=sys.stderr)
-        print("     - Generate application password in WordPress admin", file=sys.stderr)
-        print("       (Users → Profile → Application Passwords)", file=sys.stderr)
-        print("     - Set WP_USER and WP_APP_PASSWORD in mysecrets.py", file=sys.stderr)
-        print("="*70 + "\n", file=sys.stderr)
-        sys.exit(1)
+    domain = "sensemagic.nl"
 
-    # Get required fields - no defaults
-    if not hasattr(mysecrets, 'WP_USER'):
-        print("ERROR: WP_USER not defined in mysecrets.py", file=sys.stderr)
-        sys.exit(1)
-
-    if not hasattr(mysecrets, 'WP_APP_PASSWORD'):
-        print("ERROR: WP_APP_PASSWORD not defined in mysecrets.py", file=sys.stderr)
-        sys.exit(1)
-
-    wp_user = mysecrets.WP_USER
-    wp_password = mysecrets.WP_APP_PASSWORD
-    domain = getattr(mysecrets, 'DOMAIN', 'sensemagic.nl')
-    base_url = getattr(mysecrets, 'WP_BASE_URL', None)
-    verify_ssl = getattr(mysecrets, 'WP_VERIFY_SSL', False)
-
-    # Validate credentials are not placeholders
-    if not wp_user or wp_user == "admin":
-        print("ERROR: WP_USER in mysecrets.py must be set to your actual WordPress username", file=sys.stderr)
-        sys.exit(1)
-
-    if not wp_password or wp_password.startswith("xxxx"):
-        print("ERROR: WP_APP_PASSWORD in mysecrets.py must be set to your actual application password", file=sys.stderr)
-        print("Generate one in WordPress admin: Users → Profile → Application Passwords", file=sys.stderr)
-        sys.exit(1)
-
-    # Test connection - fail immediately on error
-    # Use configuration from mysecrets.py (base_url and verify_ssl)
-    wp_sync = WordPressSync(
-        domain,
-        wp_user,
-        wp_password,
-        base_url=base_url,      # From mysecrets.py (optional)
-        verify_ssl=verify_ssl   # From mysecrets.py (optional)
-    )
+    wp_sync = WordPressSync(domain)
     success = wp_sync.test_connection()
 
     if not success:
         print("\n" + "="*70, file=sys.stderr)
-        print("ERROR: WordPress connection failed!", file=sys.stderr)
+        print("ERROR: WP-CLI connection failed!", file=sys.stderr)
+        print("Check that PHP and WP-CLI are available:", file=sys.stderr)
+        print(f"  PHP:    {WordPressSync.PHP_BIN}", file=sys.stderr)
+        print(f"  WP-CLI: {WordPressSync.WP_CLI}", file=sys.stderr)
+        print(f"  WP dir: {WordPressSync.WP_PATH}", file=sys.stderr)
         print("="*70 + "\n", file=sys.stderr)
         sys.exit(1)
 
@@ -1062,7 +809,6 @@ def main():
     print("\nTesting menu functionality:")
     print("-" * 60)
 
-    # List available menus
     menus = wp_sync.get_menus()
     if menus:
         print(f"Found {len(menus)} menu(s):")

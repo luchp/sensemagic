@@ -8,46 +8,11 @@ import argparse
 from fastapi import APIRouter
 from wordpress_sync import WordPressSync
 
-# Import secrets - REQUIRED, no fallback
+# Optional: import mysecrets for backward compatibility (no longer required for WP-CLI)
 try:
     import mysecrets
 except ImportError:
-    print("\n" + "="*70, file=sys.stderr)
-    print("ERROR: mysecrets.py file not found!", file=sys.stderr)
-    print("="*70, file=sys.stderr)
-    print("WordPress sync requires app/mysecrets.py file with credentials.", file=sys.stderr)
-    print("\nTo create it:", file=sys.stderr)
-    print("  1. cp app/mysecrets.py.example app/mysecrets.py", file=sys.stderr)
-    print("  2. Edit app/mysecrets.py and add your WordPress credentials", file=sys.stderr)
-    print("  3. Generate application password in WordPress admin", file=sys.stderr)
-    print("="*70 + "\n", file=sys.stderr)
-    sys.exit(1)
-
-# Get credentials - REQUIRED fields, no defaults
-if not hasattr(mysecrets, 'WP_USER'):
-    print("ERROR: WP_USER not defined in mysecrets.py", file=sys.stderr)
-    sys.exit(1)
-
-if not hasattr(mysecrets, 'WP_APP_PASSWORD'):
-    print("ERROR: WP_APP_PASSWORD not defined in mysecrets.py", file=sys.stderr)
-    sys.exit(1)
-
-WP_USER = mysecrets.WP_USER
-WP_APP_PASSWORD = mysecrets.WP_APP_PASSWORD
-
-# Optional: WordPress connection settings
-WP_BASE_URL = getattr(mysecrets, 'WP_BASE_URL', None)
-WP_VERIFY_SSL = getattr(mysecrets, 'WP_VERIFY_SSL', False)
-
-# Validate credentials are not empty or placeholder
-if not WP_USER or WP_USER == "admin":
-    print("ERROR: WP_USER in mysecrets.py must be set to your actual WordPress username", file=sys.stderr)
-    sys.exit(1)
-
-if not WP_APP_PASSWORD or WP_APP_PASSWORD.startswith("xxxx"):
-    print("ERROR: WP_APP_PASSWORD in mysecrets.py must be set to your actual application password", file=sys.stderr)
-    print("Generate one in WordPress admin: Users → Profile → Application Passwords", file=sys.stderr)
-    sys.exit(1)
+    mysecrets = None
 
 class Discover:
     DOMAIN = "sensemagic.nl"
@@ -56,11 +21,6 @@ class Discover:
     SUPERVISOR_SERVICE = "fastapi"
     GIT_BRANCH = "main"
 
-    # WordPress credentials (loaded from secrets.py file - REQUIRED)
-    WP_USER = WP_USER
-    WP_APP_PASSWORD = WP_APP_PASSWORD
-    WP_BASE_URL = WP_BASE_URL
-    WP_VERIFY_SSL = WP_VERIFY_SSL
 
     def __init__(self):
         self.routers = {}
@@ -188,45 +148,19 @@ location /{prefix}/ {{
             return False
 
     def sync_wordpress(self):
-        """Sync discovered routers to WordPress pages"""
-        # Credentials are already validated at module import time
-        # If we get here, they must be valid
+        """Sync discovered routers to WordPress pages via WP-CLI"""
         try:
-            # Use configuration from secrets.py
-            wp_sync = WordPressSync(
-                self.DOMAIN,
-                self.WP_USER,
-                self.WP_APP_PASSWORD,
-                base_url=self.WP_BASE_URL,      # From secrets.py (optional)
-                verify_ssl=self.WP_VERIFY_SSL   # From secrets.py (optional)
-            )
+            wp_sync = WordPressSync(self.DOMAIN)
             return wp_sync.sync_routers_to_wordpress(self.routers, self.APP_PORT)
         except Exception as e:
             print(f"Error syncing to WordPress: {e}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
-            # Re-raise the exception instead of returning False
-            # This ensures errors are not hidden
             raise
 
     def sync_wordpress_menu(self, menu_name=None, articles_parent="Articles", applications_parent="Applications"):
-        """
-        Sync discovered routers to WordPress menu as sub-menu items
-
-        Parameters:
-        menu_name: Optional menu name to sync to (auto-detects if None)
-        articles_parent: Title of parent menu item for articles (default: "Articles")
-        applications_parent: Title of parent menu item for applications (default: "Applications")
-        """
-        # Credentials are already validated at module import time
+        """Sync discovered routers to WordPress menu as sub-menu items via WP-CLI"""
         try:
-            # Use configuration from secrets.py
-            wp_sync = WordPressSync(
-                self.DOMAIN,
-                self.WP_USER,
-                self.WP_APP_PASSWORD,
-                base_url=self.WP_BASE_URL,      # From secrets.py (optional)
-                verify_ssl=self.WP_VERIFY_SSL   # From secrets.py (optional)
-            )
+            wp_sync = WordPressSync(self.DOMAIN)
             return wp_sync.sync_routers_as_submenu(
                 self.routers,
                 menu_name=menu_name,
@@ -236,8 +170,6 @@ location /{prefix}/ {{
         except Exception as e:
             print(f"Error syncing to WordPress menu: {e}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
-            # Re-raise the exception instead of returning False
-            # This ensures errors are not hidden
             raise
 
 
