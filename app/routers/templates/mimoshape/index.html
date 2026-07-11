@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}Synthetic Signal Generator{% endblock %}
+
+{% block extra_style %}
+        .gen-form {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px;
+            padding: 20px 25px;
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            border-left: 4px solid #2196F3;
+            align-items: end;
+        }
+        .gen-form label {
+            display: block;
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 4px;
+        }
+        .gen-form input, .gen-form select {
+            width: 100%;
+            padding: 6px 8px;
+            font-size: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        .gen-form .checkbox-field {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .gen-form .checkbox-field input { width: auto; }
+        .generate-btn {
+            padding: 10px 24px;
+            font-size: 16px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .generate-btn:hover { background: #1976D2; }
+        .stats-table {
+            border-collapse: collapse;
+            margin: 18px 0;
+        }
+        .stats-table td, .stats-table th {
+            border: 1px solid #ddd;
+            padding: 8px 16px;
+            text-align: left;
+        }
+        .stats-table th { background: #f0f0f0; }
+        .downloads a {
+            display: inline-block;
+            margin-right: 12px;
+            padding: 8px 18px;
+            background: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+        }
+        .downloads a:hover { background: #388E3C; }
+        .note { color: #666; font-size: 14px; }
+        #spinner {
+            display: none;
+            margin: 20px 0;
+            color: #2196F3;
+            font-weight: bold;
+        }
+        .plot { margin: 10px 0; }
+{% endblock %}
+
+{% block content %}
+<h1>Synthetic Signal Generator</h1>
+<p>
+Generate a synthetic signal block with shaped statistics: minimum crest factor,
+minimum kurtosis, or a target kurtosis, together with a prescribed skewness.
+The spectrum is flat up to the band edge with a zero tail above it, so the
+statistics hold for the physical (reconstructed) waveform, not just the
+samples. Powered by the open-source
+<a href="https://github.com/luchp/mimoshape">mimoshape</a> phase optimizer.
+</p>
+
+<form class="gen-form" action="generate" method="get" onsubmit="document.getElementById('spinner').style.display='block'">
+    <div>
+        <label for="nt">Block size (samples)</label>
+        <select name="nt" id="nt">
+            {% for n in nt_choices %}
+            <option value="{{ n }}" {% if n == params.nt %}selected{% endif %}>{{ n }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label for="band">Band edge (fraction of Nyquist)</label>
+        <input type="number" name="band" id="band" value="{{ params.band }}" min="0.05" max="1.0" step="0.05">
+    </div>
+    <div>
+        <label for="objective">Objective</label>
+        <select name="objective" id="objective" onchange="document.getElementById('kurt-field').style.display = this.value === 'target_kurtosis' ? 'block' : 'none'">
+            {% for key, label in objectives.items() %}
+            <option value="{{ key }}" {% if key == params.objective %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div id="kurt-field" {% if params.objective != 'target_kurtosis' %}style="display:none"{% endif %}>
+        <label for="kurtosis">Target kurtosis</label>
+        <input type="number" name="kurtosis" id="kurtosis" value="{{ params.kurtosis }}" min="1" max="30" step="0.1">
+    </div>
+    <div>
+        <label for="skewness">Skewness</label>
+        <input type="number" name="skewness" id="skewness" value="{{ params.skewness }}" min="-2" max="2" step="0.1">
+    </div>
+    <div>
+        <label for="seed">Seed</label>
+        <input type="number" name="seed" id="seed" value="{{ params.seed }}" min="0" step="1">
+    </div>
+    <div class="checkbox-field">
+        <input type="checkbox" name="high_quality" id="high_quality" value="true" {% if params.high_quality %}checked{% endif %}>
+        <label for="high_quality" style="margin:0">High quality (slower)</label>
+    </div>
+    <div>
+        <button type="submit" class="generate-btn">Generate</button>
+    </div>
+</form>
+<p id="spinner">Optimizing phases &hellip; this can take up to
+{% if params.high_quality %}a minute{% else %}~15 seconds{% endif %}.</p>
+
+{% if result %}
+<h2>Result</h2>
+<table class="stats-table">
+    <tr><th>statistic</th><th>value</th></tr>
+    <tr><td>crest factor (sampled)</td><td>{{ result.sampled_crest }}</td></tr>
+    <tr><td>crest factor (physical, 8&times; oversampled)</td><td>{{ result.physical_crest }}</td></tr>
+    <tr><td>skewness</td><td>{{ result.skewness }}</td></tr>
+    <tr><td>kurtosis</td><td>{{ result.kurtosis }}</td></tr>
+</table>
+<p class="note">
+The physical crest is measured on an 8&times; zero-padded reconstruction and is
+the value that reaches a test article after the DAC. With a zero spectral tail
+the two agree closely; at full band the sampled value is an artefact.
+</p>
+
+<div class="downloads">
+    {% set q = "nt=" ~ params.nt ~ "&band=" ~ params.band ~ "&objective=" ~ params.objective ~ "&kurtosis=" ~ params.kurtosis ~ "&skewness=" ~ params.skewness ~ "&seed=" ~ params.seed ~ "&high_quality=" ~ params.high_quality %}
+    <a href="download?{{ q }}&fmt=npy">Download .npy</a>
+    <a href="download?{{ q }}&fmt=csv">Download .csv</a>
+    <a href="download?{{ q }}&fmt=wav">Download .wav</a>
+</div>
+
+<div id="plot-trace" class="plot"></div>
+<div id="plot-psd" class="plot"></div>
+<div id="plot-hist" class="plot"></div>
+{% endif %}
+{% endblock %}
+
+{% block extra_script %}
+{% if plot_data %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script>
+const d = {{ plot_data | safe }};
+Plotly.newPlot("plot-trace",
+    [{x: d.trace_t, y: d.trace, mode: "lines", line: {width: 0.7}}],
+    {title: "time trace", xaxis: {title: "sample"}, height: 300,
+     margin: {t: 40, b: 40}});
+Plotly.newPlot("plot-psd",
+    [{x: d.psd_f, y: d.psd, mode: "lines", line: {width: 0.7}}],
+    {title: "PSD", xaxis: {title: "frequency f/fs"},
+     yaxis: {type: "log"}, height: 300, margin: {t: 40, b: 40}});
+Plotly.newPlot("plot-hist",
+    [{x: d.hist_x, y: d.hist_y, type: "bar"}],
+    {title: "amplitude distribution (x/σ)", height: 300,
+     margin: {t: 40, b: 40}});
+</script>
+{% endif %}
+{% endblock %}

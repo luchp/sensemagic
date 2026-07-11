@@ -8,3 +8,4 @@ jinja2
 markdown
 pygments
 requests
+mimoshape @ git+https://github.com/luchp/mimoshape
