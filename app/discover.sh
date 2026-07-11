@@ -20,7 +20,8 @@ cd /home/projects/sensemagic/app
 #   ./discover.sh --sync-wordpress-menu        # Sync routers to WordPress menu items
 #   ./discover.sh --sync-wordpress --sync-wordpress-menu  # Sync both pages and menu
 #   ./discover.sh --menu-name "Main Menu"      # Specify WordPress menu by name
-#   ./discover.sh --all                        # Do everything: git pull, discover, update nginx, WordPress sync (pages + menu), restart supervisor
+#   ./discover.sh --pip-install                # Install/update dependencies from requirements.txt
+#   ./discover.sh --all                        # Do everything: git pull, pip install, discover, update nginx, WordPress sync (pages + menu), restart supervisor
 python discover.py "$@"
 
 

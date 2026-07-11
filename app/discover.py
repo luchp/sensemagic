@@ -126,6 +126,28 @@ location /{prefix}/ {{
             print(f"stderr: {e.stderr}", file=sys.stderr)
             return False
 
+    def pip_install(self):
+        """Install/update dependencies from requirements.txt into the active venv"""
+        print("Installing dependencies from requirements.txt...")
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-r",
+                 str(self.base_path / "requirements.txt")],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            print(result.stdout)
+            if result.stderr:
+                print(result.stderr, file=sys.stderr)
+            print("Dependency install completed successfully")
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"Error installing dependencies: {e}", file=sys.stderr)
+            print(f"stdout: {e.stdout}", file=sys.stderr)
+            print(f"stderr: {e.stderr}", file=sys.stderr)
+            return False
+
     def restart_supervisor(self):
         """Restart the FastAPI supervisor service"""
         print(f"Restarting supervisor service: {self.SUPERVISOR_SERVICE}...")
@@ -209,9 +231,14 @@ def main():
         help="WordPress menu name to sync to (auto-detects if not specified)"
     )
     parser.add_argument(
+        "--pip-install",
+        action="store_true",
+        help="Install/update dependencies from requirements.txt into the active venv"
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
-        help="Perform all actions: git pull, router discovery, nginx config, WordPress sync (pages + menu), and supervisor restart"
+        help="Perform all actions: git pull, pip install, router discovery, nginx config, WordPress sync (pages + menu), and supervisor restart"
     )
 
     args = parser.parse_args()
@@ -221,6 +248,7 @@ def main():
     # If --all is specified, enable all actions
     if args.all:
         args.git_pull = True
+        args.pip_install = True
         args.update_nginx = True
         args.restart_supervisor = True
         args.sync_wordpress = True
@@ -230,6 +258,11 @@ def main():
     if args.git_pull:
         if not dis.git_pull():
             print("Warning: Git pull failed, continuing anyway...", file=sys.stderr)
+
+    # Install dependencies if requested (after pull, before discovery imports)
+    if args.pip_install:
+        if not dis.pip_install():
+            print("Warning: pip install failed, continuing anyway...", file=sys.stderr)
 
     # Always perform router discovery
     dis.get_routers()
