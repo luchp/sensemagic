@@ -30,6 +30,7 @@ MAX_TIME_PER_STAGE = 5.0  # seconds, resource cap for the shared server
 class GeneratorParams:
     nt: int = 4096
     band: float = 0.5  # upper band edge as fraction of Nyquist (zero tail above)
+    taper: float = 0.1  # raised-cosine roll-off width at the band edge (fraction of Nyquist)
     objective: Literal["min_kurtosis", "min_crest", "target_kurtosis"] = "min_crest"
     kurtosis: float = 5.0  # only for objective == "target_kurtosis"
     skewness: float = 0.0
@@ -41,6 +42,8 @@ class GeneratorParams:
             raise ValueError(f"nt must be one of {NT_CHOICES}")
         if not 0.05 <= self.band <= 1.0:
             raise ValueError("band must be in [0.05, 1.0]")
+        if not 0.0 <= self.taper <= 0.5 * self.band:
+            raise ValueError("taper must be in [0, band/2]")
         if not -2.0 <= self.skewness <= 2.0:
             raise ValueError("skewness must be in [-2, 2]")
         if not 1.0 <= self.kurtosis <= 30.0:
@@ -58,15 +61,25 @@ class GeneratorResult:
     kurtosis: float
 
 
-def _band_H(nt: int, band: float) -> np.ndarray:
+def _band_H(nt: int, band: float, taper: float) -> np.ndarray:
+    """Flat band with a raised-cosine roll-off at the edge.
+
+    A smooth (tapered) edge avoids sinc-like ringing in the reconstructed
+    waveform and measurably lowers the achievable physical crest factor.
+    """
     nf = nt // 2 + 1
+    edge = int(round(band * (nf - 1)))
     H = np.zeros((1, 1, nf), dtype=complex)
-    H[0, 0, 1 : int(round(band * (nf - 1)))] = 1.0
+    H[0, 0, 1:edge] = 1.0
+    w = int(round(taper * (nf - 1)))
+    if w > 0:
+        k = np.arange(w)
+        H[0, 0, edge - w : edge] = 0.5 * (1 + np.cos(np.pi * k / w))
     return H
 
 
 def synthesize(params: GeneratorParams) -> GeneratorResult:
-    H = _band_H(params.nt, params.band)
+    H = _band_H(params.nt, params.band, params.taper)
     # high weight: an infeasible kurtosis floor target must not be allowed to
     # trade the (feasible) skewness target away
     skew = MomentTarget((0, 0, 0), params.skewness, weight=100.0)

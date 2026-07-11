@@ -78,9 +78,11 @@
 <p>
 Generate a synthetic signal block with shaped statistics: minimum crest factor,
 minimum kurtosis, or a target kurtosis, together with a prescribed skewness.
-The spectrum is flat up to the band edge with a zero tail above it, so the
-statistics hold for the physical (reconstructed) waveform, not just the
-samples. Powered by the open-source
+The spectrum is flat up to the band edge with a raised-cosine taper and a zero
+tail above it: the taper avoids sinc-like edge ringing in the reconstructed
+waveform and lowers the achievable physical crest factor, and the zero tail
+makes the statistics hold for the physical (reconstructed) waveform, not just
+the samples. Powered by the open-source
 <a href="https://github.com/luchp/mimoshape">mimoshape</a> phase optimizer.
 </p>
 
@@ -96,6 +98,10 @@ samples. Powered by the open-source
     <div>
         <label for="band">Band edge (fraction of Nyquist)</label>
         <input type="number" name="band" id="band" value="{{ params.band }}" min="0.05" max="1.0" step="0.05">
+    </div>
+    <div>
+        <label for="taper">Edge taper width (fraction of Nyquist)</label>
+        <input type="number" name="taper" id="taper" value="{{ params.taper }}" min="0" max="0.5" step="0.01">
     </div>
     <div>
         <label for="objective">Objective</label>
@@ -144,7 +150,7 @@ the two agree closely; at full band the sampled value is an artefact.
 </p>
 
 <div class="downloads">
-    {% set q = "nt=" ~ params.nt ~ "&band=" ~ params.band ~ "&objective=" ~ params.objective ~ "&kurtosis=" ~ params.kurtosis ~ "&skewness=" ~ params.skewness ~ "&seed=" ~ params.seed ~ "&high_quality=" ~ params.high_quality %}
+    {% set q = "nt=" ~ params.nt ~ "&band=" ~ params.band ~ "&taper=" ~ params.taper ~ "&objective=" ~ params.objective ~ "&kurtosis=" ~ params.kurtosis ~ "&skewness=" ~ params.skewness ~ "&seed=" ~ params.seed ~ "&high_quality=" ~ params.high_quality %}
     <a href="download?{{ q }}&fmt=npy">Download .npy</a>
     <a href="download?{{ q }}&fmt=csv">Download .csv</a>
     <a href="download?{{ q }}&fmt=wav">Download .wav</a>

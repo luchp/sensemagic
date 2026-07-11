@@ -42,6 +42,7 @@ OBJECTIVES = {
 def query_params(
     nt: int = Query(default=4096),
     band: float = Query(default=0.5, ge=0.05, le=1.0),
+    taper: float = Query(default=0.1, ge=0.0, le=0.5),
     objective: str = Query(default="min_crest"),
     kurtosis: float = Query(default=5.0, ge=1.0, le=30.0),
     skewness: float = Query(default=0.0, ge=-2.0, le=2.0),
@@ -52,7 +53,7 @@ def query_params(
         raise HTTPException(422, f"objective must be one of {list(OBJECTIVES)}")
     try:
         return GeneratorParams(
-            nt=nt, band=band, objective=objective, kurtosis=kurtosis,
+            nt=nt, band=band, taper=taper, objective=objective, kurtosis=kurtosis,
             skewness=skewness, seed=seed, high_quality=high_quality,
         )
     except ValueError as ex:
