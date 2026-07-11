@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}Signal Analyzer &amp; MIMO Reconstruction{% endblock %}
+
+{% block extra_style %}
+        .gen-form {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px;
+            padding: 20px 25px;
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            border-left: 4px solid #2196F3;
+            align-items: end;
+        }
+        .gen-form label {
+            display: block;
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 4px;
+        }
+        .gen-form input, .gen-form select {
+            width: 100%;
+            padding: 6px 8px;
+            font-size: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        .gen-form .checkbox-field {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .gen-form .checkbox-field input { width: auto; }
+        .generate-btn {
+            padding: 10px 24px;
+            font-size: 16px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .generate-btn:hover { background: #1976D2; }
+        .stats-table {
+            border-collapse: collapse;
+            margin: 18px 0;
+        }
+        .stats-table td, .stats-table th {
+            border: 1px solid #ddd;
+            padding: 8px 16px;
+            text-align: left;
+        }
+        .stats-table th { background: #f0f0f0; }
+        .downloads a {
+            display: inline-block;
+            margin-right: 12px;
+            padding: 8px 18px;
+            background: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+        }
+        .downloads a:hover { background: #388E3C; }
+        .note { color: #666; font-size: 14px; }
+        .error {
+            padding: 12px 18px;
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+            border-radius: 6px;
+            margin: 16px 0;
+        }
+        #spinner {
+            display: none;
+            margin: 20px 0;
+            color: #2196F3;
+            font-weight: bold;
+        }
+        .plot { margin: 10px 0; }
+{% endblock %}
+
+{% block content %}
+<h1>Signal Analyzer &amp; MIMO Reconstruction</h1>
+<p>
+Upload a multichannel record (up to 4 channels are used) and synthesize new
+signal blocks that match its Slepian-multitaper cross-spectral density --
+power spectra, coherences and cross phases -- together with its higher-order
+moments: skewness, kurtosis, and the joint cross-moments that govern
+coincident peaks. Powered by the open-source
+<a href="https://github.com/luchp/mimoshape">mimoshape</a> phase optimizer.
+</p>
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+<form class="gen-form" action="analyze" method="post" enctype="multipart/form-data"
+      onsubmit="document.getElementById('spinner').style.display='block'">
+    <div>
+        <label for="file">Record (.wav, .csv, .npy; max 20 MB)</label>
+        <input type="file" name="file" id="file" accept=".wav,.csv,.txt,.npy" required>
+    </div>
+    <div>
+        <label for="fs">Sample rate Hz (csv/npy; wav header wins)</label>
+        <input type="number" name="fs" id="fs" value="{{ fs }}" min="1" step="any">
+    </div>
+    <div>
+        <label for="nfft">Block size (samples)</label>
+        <select name="nfft" id="nfft">
+            {% for n in nfft_choices %}
+            <option value="{{ n }}" {% if n == params.nfft %}selected{% endif %}>{{ n }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label for="nw">Multitaper NW (bandwidth vs variance)</label>
+        <select name="nw" id="nw">
+            {% for w in nw_choices %}
+            <option value="{{ w }}" {% if w == params.nw %}selected{% endif %}>{{ w }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label for="num_blocks">Blocks to synthesize</label>
+        <input type="number" name="num_blocks" id="num_blocks" value="{{ params.num_blocks }}" min="1" max="{{ max_blocks }}" step="1">
+    </div>
+    <div>
+        <label for="seed">Seed</label>
+        <input type="number" name="seed" id="seed" value="{{ params.seed }}" min="0" step="1">
+    </div>
+    <div class="checkbox-field">
+        <input type="checkbox" name="match_skewness" id="match_skewness" value="true" {% if params.match_skewness %}checked{% endif %}>
+        <label for="match_skewness" style="margin:0">Match skewness</label>
+    </div>
+    <div class="checkbox-field">
+        <input type="checkbox" name="match_kurtosis" id="match_kurtosis" value="true" {% if params.match_kurtosis %}checked{% endif %}>
+        <label for="match_kurtosis" style="margin:0">Match kurtosis</label>
+    </div>
+    <div class="checkbox-field">
+        <input type="checkbox" name="match_cokurtosis" id="match_cokurtosis" value="true" {% if params.match_cokurtosis %}checked{% endif %}>
+        <label for="match_cokurtosis" style="margin:0">Match co-kurtosis</label>
+    </div>
+    <div class="checkbox-field">
+        <input type="checkbox" name="match_coskewness" id="match_coskewness" value="true" {% if params.match_coskewness %}checked{% endif %}>
+        <label for="match_coskewness" style="margin:0">Match co-skewness</label>
+    </div>
+    <div>
+        <button type="submit" class="generate-btn">Analyze &amp; Reconstruct</button>
+    </div>
+</form>
+<p id="spinner">Estimating CSD and optimizing phases &hellip; this can take up to a minute.</p>
+
+{% if result %}
+<h2>Analysis</h2>
+<p class="note">
+{{ result.num_channels }} channel(s), {{ result.num_samples }} samples:
+{{ result.num_segments }} segment(s) &times; {{ result.num_tapers }} tapers =
+{{ result.num_averages }} averages, &Delta;f = {{ "%.3f" | format(result.df) }} Hz.
+</p>
+
+<table class="stats-table">
+    <tr><th>moment target</th><th>record</th><th>synthesized (block avg)</th></tr>
+    {% for label, tgt, ach in result.targets %}
+    <tr><td>{{ label }}</td><td>{{ tgt }}</td><td>{{ ach }}</td></tr>
+    {% endfor %}
+</table>
+
+<div class="downloads">
+    {% for name, url in downloads %}
+    <a href="{{ url }}" download="{{ name }}">Download {{ name }}</a>
+    {% endfor %}
+</div>
+<p class="note">Downloads contain all synthesized blocks concatenated
+(channels &times; samples for .npy, one column per channel for .csv).</p>
+
+<div id="plot-psd" class="plot"></div>
+<div id="plot-coh" class="plot"></div>
+<div id="plot-phase" class="plot"></div>
+<div id="plot-trace" class="plot"></div>
+{% endif %}
+{% endblock %}
+
+{% block extra_script %}
+{% if plot_data %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script>
+const d = {{ plot_data | safe }};
+const lw = {width: 0.9};
+
+function pairPlots(divId, rec, syn, labels, title, yaxis) {
+    const traces = [];
+    rec.forEach((y, k) => traces.push(
+        {x: d.f, y: y, mode: "lines", line: lw, name: labels[k] + " record"}));
+    syn.forEach((y, k) => traces.push(
+        {x: d.f, y: y, mode: "lines", line: {...lw, dash: "dash"},
+         name: labels[k] + " synth"}));
+    Plotly.newPlot(divId, traces,
+        {title: title, xaxis: {title: "frequency [Hz]"}, yaxis: yaxis,
+         height: 320, margin: {t: 40, b: 40}, legend: {font: {size: 10}}});
+}
+
+const chLabels = d.psd_record.map((_, k) => "ch" + k);
+pairPlots("plot-psd", d.psd_record, d.psd_synth, chLabels,
+          "PSD: record vs synthesized", {type: "log"});
+if (d.pairs.length > 0) {
+    pairPlots("plot-coh", d.coh_record, d.coh_synth, d.pairs,
+              "coherence", {range: [0, 1.05]});
+    pairPlots("plot-phase", d.phase_record, d.phase_synth, d.pairs,
+              "cross phase [rad]", {});
+} else {
+    document.getElementById("plot-coh").remove();
+    document.getElementById("plot-phase").remove();
+}
+Plotly.newPlot("plot-trace",
+    d.trace.map((y, k) => ({x: d.trace_t, y: y, mode: "lines", line: lw,
+                            name: "ch" + k})),
+    {title: "first synthesized block", xaxis: {title: "sample"},
+     height: 300, margin: {t: 40, b: 40}});
+</script>
+{% endif %}
+{% endblock %}
