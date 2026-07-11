@@ -1,0 +1,2 @@
+# Server-side scripts must keep LF, regardless of Windows checkout settings
+*.sh text eol=lf
