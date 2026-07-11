@@ -32,6 +32,7 @@ class Discover:
     def get_routers(self):
         # 1 Get the router files, they must start with app_ and contain a router variable
         #   You can disable a file by adding a global variable ENABLE=False
+        print(f"Python: {sys.executable}")
         package = sys.modules[__name__].__package__
         router_files = self.router_path.glob("app_*.py")
         routers = []
