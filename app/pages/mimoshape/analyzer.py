@@ -25,10 +25,10 @@ MAX_CHANNELS = 4
 NFFT_CHOICES = (512, 1024, 2048, 4096, 8192)
 NW_CHOICES = (2.0, 3.0, 4.0, 6.0, 8.0)
 MAX_BLOCKS = 8
-MAX_SECTIONS = 8
-MAX_TOTAL_BLOCKS = 16
+MAX_MULTIMODEL_SECTIONS = 64
 MERGE_CHOICES = ("crossfade", "c1", "zero")
 MAX_TIME_PER_BLOCK = 5.0
+TIME_BUDGET = 120.0  # total optimizer seconds, shared over all blocks
 ENDPOINT_WEIGHT = 10.0  # scaled by 1/variance to make it dimensionless
 
 
@@ -121,7 +121,7 @@ class AnalysisParams:
     match_cokurtosis: bool = True
     match_coskewness: bool = False
     num_blocks: int = 4
-    num_sections: int = 1  # 1 = whole file; >1 = piecewise (multimodel)
+    multimodel: bool = False  # piecewise: one spectral model per block length
     merge: str = "crossfade"  # how consecutive blocks are joined
     seed: int = 0
 
@@ -132,13 +132,6 @@ class AnalysisParams:
             raise UploadError(f"NW must be one of {NW_CHOICES}")
         if not 1 <= self.num_blocks <= MAX_BLOCKS:
             raise UploadError(f"blocks must be 1..{MAX_BLOCKS}")
-        if not 1 <= self.num_sections <= MAX_SECTIONS:
-            raise UploadError(f"sections must be 1..{MAX_SECTIONS}")
-        if self.num_sections * self.num_blocks > MAX_TOTAL_BLOCKS:
-            raise UploadError(
-                f"sections x blocks must be <= {MAX_TOTAL_BLOCKS} "
-                f"(got {self.num_sections} x {self.num_blocks})"
-            )
         if self.merge not in MERGE_CHOICES:
             raise UploadError(f"merge must be one of {MERGE_CHOICES}")
         if not 0 <= self.seed <= 2**31:
@@ -170,9 +163,10 @@ class AnalysisResult:
     G_synth: np.ndarray  # same estimator over the raw synthesized ensemble
     blocks: np.ndarray  # (Nj, total_blocks * nfft), raw (unmerged)
     merged: np.ndarray  # (Nj, ~total), blocks joined with the merge method
+    num_sections: int
     num_segments: int  # per section
     num_tapers: int
-    targets: list  # (label, tuple, target, achieved)
+    targets: list  # (label, tuple, target, achieved); multimodel: section avg
 
 
 def _head_state(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -216,12 +210,33 @@ def analyze_and_reconstruct(
     record: np.ndarray, fs: float, p: AnalysisParams
 ) -> AnalysisResult:
     nj, n = record.shape
-    sec_len = n // p.num_sections
-    if sec_len < 2 * p.nfft:
-        raise UploadError(
-            f"sections too short: {sec_len} samples < 2 x block size {p.nfft}; "
-            "use fewer sections or a smaller block size"
-        )
+    if p.multimodel:
+        # one spectral model per block length: the output tracks the record
+        num_sections = n // p.nfft
+        sec_len = p.nfft
+        blocks_per_sec = 1
+        if num_sections < 2:
+            raise UploadError(
+                f"record too short for multimodel: {n} samples < "
+                f"2 x block size {p.nfft}; untick multimodel or use a "
+                "smaller block size"
+            )
+        if num_sections > MAX_MULTIMODEL_SECTIONS:
+            raise UploadError(
+                f"too many sections: {num_sections} > "
+                f"{MAX_MULTIMODEL_SECTIONS}; use a larger block size or a "
+                "shorter record"
+            )
+    else:
+        num_sections = 1
+        sec_len = n
+        blocks_per_sec = p.num_blocks
+        if n < 2 * p.nfft:
+            raise UploadError(
+                f"record too short: {n} samples < 2 x block size {p.nfft}"
+            )
+    total_blocks = num_sections * blocks_per_sec
+    max_time = max(1.0, min(MAX_TIME_PER_BLOCK, TIME_BUDGET / total_blocks))
     tuples = moment_tuples(nj, p)
     rng = np.random.default_rng(p.seed)
     # endpoint errors are in signal units; scale to make them dimensionless
@@ -229,9 +244,9 @@ def analyze_and_reconstruct(
     ep_w = ENDPOINT_WEIGHT / np.maximum(var, 1e-30)
 
     blocks = []
-    labelled = []
+    labelled = {}  # label -> (indices, [targets], [achieved])
     prev = None  # last synthesized block, for the C1 chain
-    for s in range(p.num_sections):
+    for s in range(num_sections):
         section = record[:, s * sec_len : (s + 1) * sec_len]
         section = section - np.mean(section, axis=1, keepdims=True)
         if np.any(np.std(section, axis=1) == 0):
@@ -242,13 +257,13 @@ def analyze_and_reconstruct(
         except np.linalg.LinAlgError:
             raise UploadError(
                 f"CSD estimate of section {s + 1} is not positive definite "
-                "(too few averages for the channel count); use fewer "
-                "sections, a smaller block size or larger NW"
+                "(too few averages for the channel count); use a larger NW "
+                "or block size"
             )
         targets = estimate.estimate_moment_targets(section, tuples)
 
         sec_blocks = []
-        for _ in range(p.num_blocks):
+        for _ in range(blocks_per_sec):
             if p.merge == "zero":
                 endpoints = [
                     EndpointTarget(k, 0.0, 0.0, ep_w[k], ep_w[k]) for k in range(nj)
@@ -265,26 +280,20 @@ def analyze_and_reconstruct(
                 endpoints = []
             problem = SynthesisProblem(H, targets=targets, endpoints=endpoints)
             shaper = MimoShaper(
-                problem, max_time=MAX_TIME_PER_BLOCK, stop_loss=1e-10, rng=rng
+                problem, max_time=max_time, stop_loss=1e-10, rng=rng
             )
             prev = shaper.make_block()
             sec_blocks.append(prev)
         blocks.extend(sec_blocks)
 
-        sec_tag = f" (sec {s + 1})" if p.num_sections > 1 else ""
-        labelled += [
-            (
-                _tuple_label(t.indices) + sec_tag,
-                t.indices,
-                t.value,
-                float(
-                    np.mean(
-                        [moments.normalized_moment(b, t.indices) for b in sec_blocks]
-                    )
-                ),
+        for t in targets:
+            label = _tuple_label(t.indices)
+            ach = float(
+                np.mean([moments.normalized_moment(b, t.indices) for b in sec_blocks])
             )
-            for t in targets
-        ]
+            entry = labelled.setdefault(label, (t.indices, [], []))
+            entry[1].append(t.value)
+            entry[2].append(ach)
 
     ensemble = np.hstack(blocks)
     if p.merge == "crossfade" and len(blocks) > 1:
@@ -299,9 +308,13 @@ def analyze_and_reconstruct(
         G_synth=G_synth,
         blocks=ensemble,
         merged=merged,
+        num_sections=num_sections,
         num_segments=sec_len // p.nfft,
         num_tapers=int(2 * p.nw - 1),
-        targets=labelled,
+        targets=[
+            (label, idx, float(np.mean(tgts)), float(np.mean(achs)))
+            for label, (idx, tgts, achs) in labelled.items()
+        ],
     )
 
 

@@ -87,9 +87,10 @@ Upload a multichannel record (up to 4 channels are used) and synthesize new
 signal blocks that match its Slepian-multitaper cross-spectral density --
 power spectra, coherences and cross phases -- together with its higher-order
 moments: skewness, kurtosis, and the joint cross-moments that govern
-coincident peaks. Non-stationary records can be chopped into sections, each
-with its own spectral model (piecewise / multimodel analysis); the
-synthesized blocks are then merged back into one continuous signal.
+coincident peaks. Non-stationary records can be resynthesized piecewise (multimodel): the
+record is chopped into consecutive block-length sections, each gets its own
+spectral model and one synthesized block, and the blocks are merged back
+into one continuous signal that tracks the record's timeline.
 Powered by the open-source
 <a href="https://github.com/luchp/mimoshape">mimoshape</a> phase optimizer.
 </p>
@@ -134,12 +135,12 @@ classic burst format for shaker testing.
         </select>
     </div>
     <div>
-        <label for="num_sections">Sections (1 = whole file)</label>
-        <input type="number" name="num_sections" id="num_sections" value="{{ params.num_sections }}" min="1" max="{{ max_sections }}" step="1">
-    </div>
-    <div>
-        <label for="num_blocks">Blocks per section</label>
+        <label for="num_blocks">Blocks (single model only)</label>
         <input type="number" name="num_blocks" id="num_blocks" value="{{ params.num_blocks }}" min="1" max="{{ max_blocks }}" step="1">
+    </div>
+    <div class="checkbox-field">
+        <input type="checkbox" name="multimodel" id="multimodel" value="true" {% if params.multimodel %}checked{% endif %}>
+        <label for="multimodel" style="margin:0">Multimodel (one model per block)</label>
     </div>
     <div>
         <label for="merge">Block merge method</label>
@@ -191,6 +192,9 @@ Merge: {{ result.merge }}, output {{ result.merged_samples }} samples.
     <tr><td>{{ label }}</td><td>{{ tgt }}</td><td>{{ ach }}</td></tr>
     {% endfor %}
 </table>
+{% if result.num_sections > 1 %}
+<p class="note">Moments averaged over {{ result.num_sections }} sections.</p>
+{% endif %}
 
 <div class="downloads">
     {% for name, url in downloads %}

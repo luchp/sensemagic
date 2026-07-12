@@ -18,8 +18,6 @@ import numpy as np
 
 from pages.mimoshape.analyzer import (
     MAX_BLOCKS,
-    MAX_SECTIONS,
-    MAX_TOTAL_BLOCKS,
     MERGE_CHOICES,
     NFFT_CHOICES,
     NW_CHOICES,
@@ -58,8 +56,6 @@ def _form_context(params: AnalysisParams, fs: float = 48000.0):
         "nfft_choices": NFFT_CHOICES,
         "nw_choices": NW_CHOICES,
         "max_blocks": MAX_BLOCKS,
-        "max_sections": MAX_SECTIONS,
-        "max_total_blocks": MAX_TOTAL_BLOCKS,
         "merge_choices": MERGE_CHOICES,
         "error": None,
         "result": None,
@@ -88,7 +84,7 @@ async def analyze(
     match_cokurtosis: bool = Form(default=False),
     match_coskewness: bool = Form(default=False),
     num_blocks: int = Form(default=4),
-    num_sections: int = Form(default=1),
+    multimodel: bool = Form(default=False),
     merge: str = Form(default="crossfade"),
     seed: int = Form(default=0),
 ):
@@ -101,7 +97,7 @@ async def analyze(
             match_cokurtosis=match_cokurtosis,
             match_coskewness=match_coskewness,
             num_blocks=num_blocks,
-            num_sections=num_sections,
+            multimodel=multimodel,
             merge=merge,
             seed=seed,
         )
@@ -180,7 +176,7 @@ def _result_context(result, params: AnalysisParams):
             "num_segments": result.num_segments,
             "num_tapers": result.num_tapers,
             "num_averages": result.num_segments * result.num_tapers,
-            "num_sections": params.num_sections,
+            "num_sections": result.num_sections,
             "merge": params.merge,
             "merged_samples": result.merged.shape[1],
             "df": result.fs / nfft,
