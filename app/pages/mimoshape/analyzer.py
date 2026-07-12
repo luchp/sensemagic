@@ -11,14 +11,25 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from mimoshape import MomentTarget, SynthesisProblem, MimoShaper, estimate, moments
+from mimoshape import (
+    EndpointTarget,
+    MomentTarget,
+    SynthesisProblem,
+    MimoShaper,
+    estimate,
+    moments,
+)
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 MAX_CHANNELS = 4
 NFFT_CHOICES = (512, 1024, 2048, 4096, 8192)
 NW_CHOICES = (2.0, 3.0, 4.0, 6.0, 8.0)
 MAX_BLOCKS = 8
+MAX_SECTIONS = 8
+MAX_TOTAL_BLOCKS = 16
+MERGE_CHOICES = ("crossfade", "c1", "zero")
 MAX_TIME_PER_BLOCK = 5.0
+ENDPOINT_WEIGHT = 10.0  # scaled by 1/variance to make it dimensionless
 
 
 class UploadError(ValueError):
@@ -110,6 +121,8 @@ class AnalysisParams:
     match_cokurtosis: bool = True
     match_coskewness: bool = False
     num_blocks: int = 4
+    num_sections: int = 1  # 1 = whole file; >1 = piecewise (multimodel)
+    merge: str = "crossfade"  # how consecutive blocks are joined
     seed: int = 0
 
     def __post_init__(self):
@@ -119,6 +132,15 @@ class AnalysisParams:
             raise UploadError(f"NW must be one of {NW_CHOICES}")
         if not 1 <= self.num_blocks <= MAX_BLOCKS:
             raise UploadError(f"blocks must be 1..{MAX_BLOCKS}")
+        if not 1 <= self.num_sections <= MAX_SECTIONS:
+            raise UploadError(f"sections must be 1..{MAX_SECTIONS}")
+        if self.num_sections * self.num_blocks > MAX_TOTAL_BLOCKS:
+            raise UploadError(
+                f"sections x blocks must be <= {MAX_TOTAL_BLOCKS} "
+                f"(got {self.num_sections} x {self.num_blocks})"
+            )
+        if self.merge not in MERGE_CHOICES:
+            raise UploadError(f"merge must be one of {MERGE_CHOICES}")
         if not 0 <= self.seed <= 2**31:
             raise UploadError("seed must be a non-negative 32-bit integer")
 
@@ -145,64 +167,141 @@ class AnalysisResult:
     record: np.ndarray  # (Nj, N) as analysed
     fs: float
     G_record: np.ndarray  # multitaper CSD of the record
-    G_synth: np.ndarray  # same estimator over the synthesized ensemble
-    blocks: np.ndarray  # (Nj, num_blocks * nfft)
-    num_segments: int
+    G_synth: np.ndarray  # same estimator over the raw synthesized ensemble
+    blocks: np.ndarray  # (Nj, total_blocks * nfft), raw (unmerged)
+    merged: np.ndarray  # (Nj, ~total), blocks joined with the merge method
+    num_segments: int  # per section
     num_tapers: int
     targets: list  # (label, tuple, target, achieved)
+
+
+def _head_state(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Head value and periodic head slope (unit sample time) per channel."""
+    return x[:, 0], 0.5 * (x[:, 1] - x[:, -1])
+
+
+def _best_shift(tail: np.ndarray, block: np.ndarray) -> int:
+    """Circular shift of ``block`` maximising correlation with ``tail``.
+
+    Blocks are periodic, so a rotation is a pure linear phase: it changes
+    nothing statistically but lets us splice where the waveforms agree
+    (WSOLA-style alignment). The same shift is applied to all channels,
+    preserving cross-spectra and cross-moments.
+    """
+    nt = block.shape[1]
+    p = np.zeros_like(block)
+    p[:, : tail.shape[1]] = tail
+    corr = np.fft.irfft(
+        np.conj(np.fft.rfft(p, axis=1)) * np.fft.rfft(block, axis=1), n=nt, axis=1
+    )
+    return int(np.argmax(np.sum(corr, axis=0)))
+
+
+def _merge_crossfade(blocks: list, fade: int) -> np.ndarray:
+    """Aligned equal-power crossfade: rotate each next block to best match
+    the outgoing tail, then fade with cos/sin weights (variance-preserving
+    for uncorrelated signals, exact for correlated ones)."""
+    theta = np.pi / 2 * (np.arange(fade) + 0.5) / fade
+    w_out, w_in = np.cos(theta), np.sin(theta)
+    out = blocks[0]
+    for block in blocks[1:]:
+        shift = _best_shift(out[:, -fade:], block)
+        rolled = np.roll(block, -shift, axis=1)
+        mix = out[:, -fade:] * w_out + rolled[:, :fade] * w_in
+        out = np.concatenate([out[:, :-fade], mix, rolled[:, fade:]], axis=1)
+    return out
 
 
 def analyze_and_reconstruct(
     record: np.ndarray, fs: float, p: AnalysisParams
 ) -> AnalysisResult:
     nj, n = record.shape
-    if n < 2 * p.nfft:
+    sec_len = n // p.num_sections
+    if sec_len < 2 * p.nfft:
         raise UploadError(
-            f"record too short: {n} samples < 2 x block size {p.nfft}"
-        )
-    G = estimate.multitaper_csd(record, nw=p.nw, nfft=p.nfft)
-    try:
-        H = estimate.csd_to_frf(G, variance=np.var(record, axis=1))
-    except np.linalg.LinAlgError:
-        raise UploadError(
-            "CSD estimate is not positive definite at some frequency "
-            "(too few averages for the channel count); use a smaller "
-            "block size or larger NW"
+            f"sections too short: {sec_len} samples < 2 x block size {p.nfft}; "
+            "use fewer sections or a smaller block size"
         )
     tuples = moment_tuples(nj, p)
-    targets = estimate.estimate_moment_targets(record, tuples)
+    rng = np.random.default_rng(p.seed)
+    # endpoint errors are in signal units; scale to make them dimensionless
+    var = np.var(record, axis=1)
+    ep_w = ENDPOINT_WEIGHT / np.maximum(var, 1e-30)
 
-    problem = SynthesisProblem(H, targets=targets)
-    shaper = MimoShaper(
-        problem,
-        max_time=MAX_TIME_PER_BLOCK,
-        stop_loss=1e-10,
-        rng=np.random.default_rng(p.seed),
-    )
-    blocks = [shaper.make_block() for _ in range(p.num_blocks)]
+    blocks = []
+    labelled = []
+    prev = None  # last synthesized block, for the C1 chain
+    for s in range(p.num_sections):
+        section = record[:, s * sec_len : (s + 1) * sec_len]
+        section = section - np.mean(section, axis=1, keepdims=True)
+        if np.any(np.std(section, axis=1) == 0):
+            raise UploadError(f"section {s + 1} has a constant channel")
+        G = estimate.multitaper_csd(section, nw=p.nw, nfft=p.nfft)
+        try:
+            H = estimate.csd_to_frf(G, variance=np.var(section, axis=1))
+        except np.linalg.LinAlgError:
+            raise UploadError(
+                f"CSD estimate of section {s + 1} is not positive definite "
+                "(too few averages for the channel count); use fewer "
+                "sections, a smaller block size or larger NW"
+            )
+        targets = estimate.estimate_moment_targets(section, tuples)
+
+        sec_blocks = []
+        for _ in range(p.num_blocks):
+            if p.merge == "zero":
+                endpoints = [
+                    EndpointTarget(k, 0.0, 0.0, ep_w[k], ep_w[k]) for k in range(nj)
+                ]
+            elif p.merge == "c1" and prev is not None:
+                # periodic continuation of the previous block ends at its own
+                # head state: match it for a C1 joint
+                head, slope = _head_state(prev)
+                endpoints = [
+                    EndpointTarget(k, head[k], slope[k], ep_w[k], ep_w[k])
+                    for k in range(nj)
+                ]
+            else:
+                endpoints = []
+            problem = SynthesisProblem(H, targets=targets, endpoints=endpoints)
+            shaper = MimoShaper(
+                problem, max_time=MAX_TIME_PER_BLOCK, stop_loss=1e-10, rng=rng
+            )
+            prev = shaper.make_block()
+            sec_blocks.append(prev)
+        blocks.extend(sec_blocks)
+
+        sec_tag = f" (sec {s + 1})" if p.num_sections > 1 else ""
+        labelled += [
+            (
+                _tuple_label(t.indices) + sec_tag,
+                t.indices,
+                t.value,
+                float(
+                    np.mean(
+                        [moments.normalized_moment(b, t.indices) for b in sec_blocks]
+                    )
+                ),
+            )
+            for t in targets
+        ]
+
     ensemble = np.hstack(blocks)
-
-    achieved = [
-        (
-            t.indices,
-            t.value,
-            float(np.mean([moments.normalized_moment(b, t.indices) for b in blocks])),
-        )
-        for t in targets
-    ]
+    if p.merge == "crossfade" and len(blocks) > 1:
+        merged = _merge_crossfade(blocks, fade=p.nfft // 16)
+    else:
+        merged = ensemble  # zero / c1 joints concatenate as-is
     G_synth = estimate.multitaper_csd(ensemble, nw=p.nw, nfft=p.nfft)
-    num_tapers = int(2 * p.nw - 1)
     return AnalysisResult(
         record=record,
         fs=fs,
-        G_record=G,
+        G_record=estimate.multitaper_csd(record, nw=p.nw, nfft=p.nfft),
         G_synth=G_synth,
         blocks=ensemble,
-        num_segments=n // p.nfft,
-        num_tapers=num_tapers,
-        targets=[
-            (_tuple_label(idx), idx, tgt, ach) for idx, tgt, ach in achieved
-        ],
+        merged=merged,
+        num_segments=sec_len // p.nfft,
+        num_tapers=int(2 * p.nw - 1),
+        targets=labelled,
     )
 
 

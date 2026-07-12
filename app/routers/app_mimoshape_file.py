@@ -18,6 +18,9 @@ import numpy as np
 
 from pages.mimoshape.analyzer import (
     MAX_BLOCKS,
+    MAX_SECTIONS,
+    MAX_TOTAL_BLOCKS,
+    MERGE_CHOICES,
     NFFT_CHOICES,
     NW_CHOICES,
     AnalysisParams,
@@ -55,6 +58,9 @@ def _form_context(params: AnalysisParams, fs: float = 48000.0):
         "nfft_choices": NFFT_CHOICES,
         "nw_choices": NW_CHOICES,
         "max_blocks": MAX_BLOCKS,
+        "max_sections": MAX_SECTIONS,
+        "max_total_blocks": MAX_TOTAL_BLOCKS,
+        "merge_choices": MERGE_CHOICES,
         "error": None,
         "result": None,
         "plot_data": None,
@@ -82,6 +88,8 @@ async def analyze(
     match_cokurtosis: bool = Form(default=False),
     match_coskewness: bool = Form(default=False),
     num_blocks: int = Form(default=4),
+    num_sections: int = Form(default=1),
+    merge: str = Form(default="crossfade"),
     seed: int = Form(default=0),
 ):
     try:
@@ -93,6 +101,8 @@ async def analyze(
             match_cokurtosis=match_cokurtosis,
             match_coskewness=match_coskewness,
             num_blocks=num_blocks,
+            num_sections=num_sections,
+            merge=merge,
             seed=seed,
         )
         data = await file.read()
@@ -141,24 +151,24 @@ def _result_context(result, params: AnalysisParams):
     psd_r, coh_r, phase_r, pairs = csd_curves(result.G_record)
     psd_s, coh_s, phase_s, _ = csd_curves(result.G_synth)
 
-    step = max(1, nfft // 4096)
-    trace = result.blocks[:, :nfft:step]
+    step = max(1, result.merged.shape[1] // 8192)
+    trace = result.merged[:, ::step]
 
-    # downloads: full synthesized ensemble
+    # downloads: the merged synthesized signal
     npy_buf = io.BytesIO()
-    np.save(npy_buf, result.blocks)
+    np.save(npy_buf, result.merged)
     csv_buf = io.BytesIO()
-    np.savetxt(csv_buf, result.blocks.T, fmt="%.9g", delimiter=",")
+    np.savetxt(csv_buf, result.merged.T, fmt="%.9g", delimiter=",")
     downloads = [
-        ("blocks.npy", _data_url(npy_buf.getvalue(), "application/octet-stream")),
-        ("blocks.csv", _data_url(csv_buf.getvalue(), "text/csv")),
+        ("synth.npy", _data_url(npy_buf.getvalue(), "application/octet-stream")),
+        ("synth.csv", _data_url(csv_buf.getvalue(), "text/csv")),
     ]
     if nj == 1:
         downloads.append(
             (
-                "blocks.wav",
+                "synth.wav",
                 _data_url(
-                    to_wav_bytes(result.blocks[0], fs=int(result.fs)), "audio/wav"
+                    to_wav_bytes(result.merged[0], fs=int(result.fs)), "audio/wav"
                 ),
             )
         )
@@ -170,6 +180,9 @@ def _result_context(result, params: AnalysisParams):
             "num_segments": result.num_segments,
             "num_tapers": result.num_tapers,
             "num_averages": result.num_segments * result.num_tapers,
+            "num_sections": params.num_sections,
+            "merge": params.merge,
+            "merged_samples": result.merged.shape[1],
             "df": result.fs / nfft,
             "targets": [
                 (label, f"{tgt:.3f}", f"{ach:.3f}")
@@ -187,7 +200,7 @@ def _result_context(result, params: AnalysisParams):
                 "phase_record": [p[1:] for p in phase_r],
                 "phase_synth": [p[1:] for p in phase_s],
                 "pairs": pairs,
-                "trace_t": np.arange(0, nfft, step).tolist(),
+                "trace_t": np.arange(0, result.merged.shape[1], step).tolist(),
                 "trace": trace.tolist(),
             }
         ),

@@ -87,8 +87,20 @@ Upload a multichannel record (up to 4 channels are used) and synthesize new
 signal blocks that match its Slepian-multitaper cross-spectral density --
 power spectra, coherences and cross phases -- together with its higher-order
 moments: skewness, kurtosis, and the joint cross-moments that govern
-coincident peaks. Powered by the open-source
+coincident peaks. Non-stationary records can be chopped into sections, each
+with its own spectral model (piecewise / multimodel analysis); the
+synthesized blocks are then merged back into one continuous signal.
+Powered by the open-source
 <a href="https://github.com/luchp/mimoshape">mimoshape</a> phase optimizer.
+</p>
+<p class="note">
+Merge methods: <b>aligned crossfade</b> rotates each next block (blocks are
+periodic, so this is statistically free) to best match the outgoing
+waveform, then applies a short equal-power fade -- best for audio.
+<b>C1 splice</b> constrains each block's head value and slope to continue
+the previous block during optimization: mathematically seamless, no fade
+zone. <b>Zero joints</b> pins every block start and end to zero -- the
+classic burst format for shaker testing.
 </p>
 
 {% if error %}
@@ -122,8 +134,20 @@ coincident peaks. Powered by the open-source
         </select>
     </div>
     <div>
-        <label for="num_blocks">Blocks to synthesize</label>
+        <label for="num_sections">Sections (1 = whole file)</label>
+        <input type="number" name="num_sections" id="num_sections" value="{{ params.num_sections }}" min="1" max="{{ max_sections }}" step="1">
+    </div>
+    <div>
+        <label for="num_blocks">Blocks per section</label>
         <input type="number" name="num_blocks" id="num_blocks" value="{{ params.num_blocks }}" min="1" max="{{ max_blocks }}" step="1">
+    </div>
+    <div>
+        <label for="merge">Block merge method</label>
+        <select name="merge" id="merge">
+            <option value="crossfade" {% if params.merge == "crossfade" %}selected{% endif %}>aligned crossfade (audio)</option>
+            <option value="c1" {% if params.merge == "c1" %}selected{% endif %}>C1 splice (seamless)</option>
+            <option value="zero" {% if params.merge == "zero" %}selected{% endif %}>zero joints (shaker bursts)</option>
+        </select>
     </div>
     <div>
         <label for="seed">Seed</label>
@@ -154,9 +178,11 @@ coincident peaks. Powered by the open-source
 {% if result %}
 <h2>Analysis</h2>
 <p class="note">
-{{ result.num_channels }} channel(s), {{ result.num_samples }} samples:
+{{ result.num_channels }} channel(s), {{ result.num_samples }} samples,
+{{ result.num_sections }} section(s):
 {{ result.num_segments }} segment(s) &times; {{ result.num_tapers }} tapers =
-{{ result.num_averages }} averages, &Delta;f = {{ "%.3f" | format(result.df) }} Hz.
+{{ result.num_averages }} averages per section, &Delta;f = {{ "%.3f" | format(result.df) }} Hz.
+Merge: {{ result.merge }}, output {{ result.merged_samples }} samples.
 </p>
 
 <table class="stats-table">
@@ -171,7 +197,7 @@ coincident peaks. Powered by the open-source
     <a href="{{ url }}" download="{{ name }}">Download {{ name }}</a>
     {% endfor %}
 </div>
-<p class="note">Downloads contain all synthesized blocks concatenated
+<p class="note">Downloads contain the merged synthesized signal
 (channels &times; samples for .npy, one column per channel for .csv).</p>
 
 <div id="plot-psd" class="plot"></div>
@@ -215,7 +241,7 @@ if (d.pairs.length > 0) {
 Plotly.newPlot("plot-trace",
     d.trace.map((y, k) => ({x: d.trace_t, y: y, mode: "lines", line: lw,
                             name: "ch" + k})),
-    {title: "first synthesized block", xaxis: {title: "sample"},
+    {title: "merged synthesized signal", xaxis: {title: "sample"},
      height: 300, margin: {t: 40, b: 40}});
 </script>
 {% endif %}
