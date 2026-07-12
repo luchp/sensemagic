@@ -6,10 +6,10 @@ returns everything (including download payloads) in the response.
 """
 
 import io
-import wave
 from dataclasses import dataclass
 
 import numpy as np
+import soundfile as sf
 
 from mimoshape import (
     EndpointTarget,
@@ -38,22 +38,22 @@ class UploadError(ValueError):
 
 
 def parse_upload(filename: str, data: bytes, fs_field: float) -> tuple[np.ndarray, float]:
-    """Parse wav/csv/npy bytes into a (channels, samples) float record + fs.
+    """Parse audio/csv/npy bytes into a (channels, samples) float record + fs.
 
-    Channels beyond MAX_CHANNELS are dropped. fs comes from the wav header,
-    or from ``fs_field`` for csv/npy.
+    Anything that is not csv/npy is handed to libsndfile (wav, flac, ogg,
+    mp3, ...) -- compressed audio uploads much faster. Channels beyond
+    MAX_CHANNELS are dropped. fs comes from the audio header, or from
+    ``fs_field`` for csv/npy.
     """
     if len(data) > MAX_UPLOAD_BYTES:
         raise UploadError(f"file exceeds {MAX_UPLOAD_BYTES // 2**20} MB limit")
     name = filename.lower()
-    if name.endswith(".wav"):
-        record, fs = _parse_wav(data)
-    elif name.endswith(".csv") or name.endswith(".txt"):
+    if name.endswith(".csv") or name.endswith(".txt"):
         record, fs = _parse_csv(data), fs_field
     elif name.endswith(".npy"):
         record, fs = _parse_npy(data), fs_field
     else:
-        raise UploadError("supported formats: .wav, .csv/.txt, .npy")
+        record, fs = _parse_audio(data)
     if fs <= 0:
         raise UploadError("sample rate must be positive")
     record = np.atleast_2d(np.asarray(record, dtype=float))
@@ -67,29 +67,15 @@ def parse_upload(filename: str, data: bytes, fs_field: float) -> tuple[np.ndarra
     return record, float(fs)
 
 
-def _parse_wav(data: bytes) -> tuple[np.ndarray, float]:
+def _parse_audio(data: bytes) -> tuple[np.ndarray, float]:
     try:
-        with wave.open(io.BytesIO(data), "rb") as w:
-            fs = w.getframerate()
-            nch = w.getnchannels()
-            width = w.getsampwidth()
-            frames = w.readframes(w.getnframes())
-    except wave.Error as ex:
-        raise UploadError(f"could not read wav file: {ex}")
-    if width == 2:
-        x = np.frombuffer(frames, dtype="<i2").astype(float)
-    elif width == 4:
-        x = np.frombuffer(frames, dtype="<i4").astype(float)
-    elif width == 3:
-        b = np.frombuffer(frames, dtype=np.uint8).reshape(-1, 3)
-        x = (
-            b[:, 0].astype(np.int32)
-            | (b[:, 1].astype(np.int32) << 8)
-            | (b[:, 2].astype(np.int8).astype(np.int32) << 16)
-        ).astype(float)
-    else:
-        raise UploadError(f"unsupported wav sample width {width * 8} bit (use 16/24/32)")
-    return x.reshape(-1, nch).T, float(fs)
+        x, fs = sf.read(io.BytesIO(data), always_2d=True, dtype="float64")
+    except Exception as ex:
+        raise UploadError(
+            f"could not read audio file ({ex}); supported formats: any "
+            "libsndfile audio (wav, flac, ogg, mp3, ...), .csv/.txt, .npy"
+        )
+    return x.T, float(fs)
 
 
 def _parse_csv(data: bytes) -> np.ndarray:

@@ -83,7 +83,8 @@
 {% block content %}
 <h1>Signal Analyzer &amp; MIMO Reconstruction</h1>
 <p>
-Upload a multichannel record (up to 4 channels are used) and synthesize new
+Upload a record -- any audio format (wav, flac, ogg, mp3, ...), csv or
+numpy; up to 4 channels are used -- and synthesize new
 signal blocks that match its Slepian-multitaper cross-spectral density --
 power spectra, coherences and cross phases -- together with its higher-order
 moments: skewness, kurtosis, and the joint cross-moments that govern
@@ -111,8 +112,8 @@ classic burst format for shaker testing.
 <form class="gen-form" action="analyze" method="post" enctype="multipart/form-data"
       onsubmit="document.getElementById('spinner').style.display='block'">
     <div>
-        <label for="file">Record (.wav, .csv, .npy; max 20 MB)</label>
-        <input type="file" name="file" id="file" accept=".wav,.csv,.txt,.npy" required>
+        <label for="file">Record (audio / .csv / .npy; max 20 MB)</label>
+        <input type="file" name="file" id="file" accept="audio/*,.wav,.flac,.ogg,.mp3,.csv,.txt,.npy" required>
     </div>
     <div>
         <label for="fs">Sample rate Hz (csv/npy; wav header wins)</label>
