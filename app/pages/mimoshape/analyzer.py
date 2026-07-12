@@ -25,10 +25,11 @@ MAX_CHANNELS = 4
 NFFT_CHOICES = (512, 1024, 2048, 4096, 8192)
 NW_CHOICES = (2.0, 3.0, 4.0, 6.0, 8.0)
 MAX_BLOCKS = 8
-MAX_MULTIMODEL_SECTIONS = 64
+MAX_MULTIMODEL_SECTIONS = 1024  # ~2 min of 48 kHz audio at nfft 8192
 MERGE_CHOICES = ("crossfade", "c1", "zero")
 MAX_TIME_PER_BLOCK = 5.0
-TIME_BUDGET = 120.0  # total optimizer seconds, shared over all blocks
+MIN_TIME_PER_BLOCK = 0.25
+TIME_BUDGET = 300.0  # total optimizer seconds, shared over all blocks
 ENDPOINT_WEIGHT = 10.0  # scaled by 1/variance to make it dimensionless
 
 
@@ -236,7 +237,7 @@ def analyze_and_reconstruct(
                 f"record too short: {n} samples < 2 x block size {p.nfft}"
             )
     total_blocks = num_sections * blocks_per_sec
-    max_time = max(1.0, min(MAX_TIME_PER_BLOCK, TIME_BUDGET / total_blocks))
+    max_time = max(MIN_TIME_PER_BLOCK, min(MAX_TIME_PER_BLOCK, TIME_BUDGET / total_blocks))
     tuples = moment_tuples(nj, p)
     rng = np.random.default_rng(p.seed)
     # endpoint errors are in signal units; scale to make them dimensionless

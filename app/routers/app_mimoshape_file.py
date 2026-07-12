@@ -150,15 +150,16 @@ def _result_context(result, params: AnalysisParams):
     step = max(1, result.merged.shape[1] // 8192)
     trace = result.merged[:, ::step]
 
-    # downloads: the merged synthesized signal
+    # downloads: the merged synthesized signal (float32 keeps data URLs lean)
     npy_buf = io.BytesIO()
-    np.save(npy_buf, result.merged)
-    csv_buf = io.BytesIO()
-    np.savetxt(csv_buf, result.merged.T, fmt="%.9g", delimiter=",")
+    np.save(npy_buf, result.merged.astype(np.float32))
     downloads = [
         ("synth.npy", _data_url(npy_buf.getvalue(), "application/octet-stream")),
-        ("synth.csv", _data_url(csv_buf.getvalue(), "text/csv")),
     ]
+    if result.merged.size <= 2_000_000:  # csv is ~10x bigger; skip when large
+        csv_buf = io.BytesIO()
+        np.savetxt(csv_buf, result.merged.T, fmt="%.9g", delimiter=",")
+        downloads.append(("synth.csv", _data_url(csv_buf.getvalue(), "text/csv")))
     if nj == 1:
         downloads.append(
             (
