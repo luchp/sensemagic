@@ -77,6 +77,24 @@
             color: #2196F3;
             font-weight: bold;
         }
+        .progress-wrap {
+            margin: 24px 0;
+        }
+        .progress-outer {
+            width: 100%;
+            max-width: 500px;
+            height: 22px;
+            background: #eee;
+            border-radius: 11px;
+            overflow: hidden;
+        }
+        .progress-inner {
+            height: 100%;
+            width: 2%;
+            background: #2196F3;
+            border-radius: 11px;
+            transition: width 0.5s;
+        }
         .plot { margin: 10px 0; }
 {% endblock %}
 
@@ -175,7 +193,14 @@ classic burst format for shaker testing.
         <button type="submit" class="generate-btn">Analyze &amp; Reconstruct</button>
     </div>
 </form>
-<p id="spinner">Estimating CSD and optimizing phases &hellip; long multimodel runs can take a few minutes.</p>
+<p id="spinner">Uploading and parsing &hellip;</p>
+
+{% if job_id %}
+<div class="progress-wrap">
+    <p id="progress-text" class="note">Queued &hellip; (at most two jobs run at once)</p>
+    <div class="progress-outer"><div class="progress-inner" id="progress-bar"></div></div>
+</div>
+{% endif %}
 
 {% if result %}
 <h2>Analysis</h2>
@@ -213,6 +238,48 @@ Merge: {{ result.merge }}, output {{ result.merged_samples }} samples.
 {% endblock %}
 
 {% block extra_script %}
+{% if job_id %}
+<script>
+const jobId = "{{ job_id }}";
+const basePath = "{{ base_path }}";
+async function poll() {
+    let r;
+    try {
+        r = await fetch(basePath + "/progress/" + jobId, {cache: "no-store"});
+    } catch (e) {
+        setTimeout(poll, 3000);
+        return;
+    }
+    if (r.status === 404) {
+        document.getElementById("progress-text").textContent =
+            "Job not found (results are kept for one hour).";
+        return;
+    }
+    const s = await r.json();
+    const text = document.getElementById("progress-text");
+    const bar = document.getElementById("progress-bar");
+    if (s.state === "done") {
+        text.textContent = "Done - loading results ...";
+        bar.style.width = "100%";
+        window.location = basePath + "/result/" + jobId + window.location.search;
+        return;
+    }
+    if (s.state === "error") {
+        text.textContent = "Failed: " + s.error;
+        bar.style.background = "#f44336";
+        return;
+    }
+    if (s.state === "running" && s.total > 0) {
+        text.textContent = "Optimizing block " + s.done + " / " + s.total + " ...";
+        bar.style.width = Math.max(2, 100 * s.done / s.total) + "%";
+    } else {
+        text.textContent = "Queued ... (at most two jobs run at once)";
+    }
+    setTimeout(poll, 1000);
+}
+poll();
+</script>
+{% endif %}
 {% if plot_data %}
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script>

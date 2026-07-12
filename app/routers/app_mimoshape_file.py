@@ -1,9 +1,10 @@
 """Router for the mimoshape record analyzer / MIMO reconstruction page.
 
-Single-shot and stateless: one POST parses the uploaded record (wav/csv/npy),
-estimates the Slepian multitaper CSD and moment targets, synthesizes matching
-MIMO blocks, and embeds plots and downloads (base64 data URLs) in the
-response.  Nothing is stored server-side.
+The POST parses the uploaded record (audio/csv/npy), validates the settings
+and queues a synthesis job on a small in-process worker pool (2 concurrent
+optimizations, the rest waits). The browser polls a JSON progress endpoint
+and loads the result page when done. Results (with downloads embedded as
+base64 data URLs) are kept in memory for an hour.
 """
 
 import base64
@@ -12,7 +13,7 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 import numpy as np
 
@@ -23,9 +24,9 @@ from pages.mimoshape.analyzer import (
     NW_CHOICES,
     AnalysisParams,
     UploadError,
-    analyze_and_reconstruct,
     parse_upload,
 )
+from pages.mimoshape.jobs import JobManager
 from pages.mimoshape.generator import to_wav_bytes
 
 prefix = Path(__file__).stem  # "app_mimoshape_file"
@@ -36,6 +37,7 @@ router.description = (
 )
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+jobs = JobManager()
 
 
 def _render(request, context):
@@ -53,6 +55,7 @@ def _form_context(params: AnalysisParams, fs: float = 48000.0):
     return {
         "params": params,
         "fs": fs,
+        "base_path": router.prefix,
         "nfft_choices": NFFT_CHOICES,
         "nw_choices": NW_CHOICES,
         "max_blocks": MAX_BLOCKS,
@@ -61,6 +64,7 @@ def _form_context(params: AnalysisParams, fs: float = 48000.0):
         "result": None,
         "plot_data": None,
         "downloads": None,
+        "job_id": None,
     }
 
 
@@ -103,7 +107,7 @@ async def analyze(
         )
         data = await file.read()
         record, fs_used = parse_upload(file.filename or "", data, fs)
-        result = analyze_and_reconstruct(record, fs_used, params)
+        job_id = jobs.submit(record, fs_used, params)
     except UploadError as ex:
         ctx = _form_context(_safe_params(nfft, nw, num_blocks, seed), fs)
         ctx["standalone"] = standalone
@@ -112,7 +116,37 @@ async def analyze(
 
     ctx = _form_context(params, fs_used)
     ctx["standalone"] = standalone
-    ctx.update(_result_context(result, params))
+    ctx["job_id"] = job_id
+    return _render(request, ctx)
+
+
+@router.get("/progress/{job_id}")
+async def progress(job_id: str):
+    job = jobs.get(job_id)
+    if job is None:
+        return JSONResponse({"state": "gone"}, status_code=404)
+    return {
+        "state": job.state,
+        "done": job.done_blocks,
+        "total": job.total_blocks,
+        "error": job.error,
+    }
+
+
+@router.get("/result/{job_id}", response_class=HTMLResponse)
+async def result(request: Request, job_id: str, standalone: bool = True):
+    job = jobs.get(job_id)
+    ctx = _form_context(job.params if job else AnalysisParams(),
+                        job.fs if job else 48000.0)
+    ctx["standalone"] = standalone
+    if job is None:
+        ctx["error"] = "job not found (results are kept for one hour)"
+    elif job.state == "error":
+        ctx["error"] = job.error
+    elif job.state != "done":
+        ctx["job_id"] = job_id  # early visit: keep polling
+    else:
+        ctx.update(_result_context(job.result, job.params))
     return _render(request, ctx)
 
 

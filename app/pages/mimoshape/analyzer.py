@@ -194,8 +194,9 @@ def _merge_crossfade(blocks: list, fade: int) -> np.ndarray:
 
 
 def analyze_and_reconstruct(
-    record: np.ndarray, fs: float, p: AnalysisParams
+    record: np.ndarray, fs: float, p: AnalysisParams, progress=None
 ) -> AnalysisResult:
+    """``progress(done_blocks, total_blocks)`` is called after each block."""
     nj, n = record.shape
     if p.multimodel:
         # one spectral model per block length: the output tracks the record
@@ -233,6 +234,7 @@ def analyze_and_reconstruct(
     blocks = []
     labelled = {}  # label -> (indices, [targets], [achieved])
     prev = None  # last synthesized block, for the C1 chain
+    done = 0
     for s in range(num_sections):
         section = record[:, s * sec_len : (s + 1) * sec_len]
         section = section - np.mean(section, axis=1, keepdims=True)
@@ -271,6 +273,9 @@ def analyze_and_reconstruct(
             )
             prev = shaper.make_block()
             sec_blocks.append(prev)
+            done += 1
+            if progress is not None:
+                progress(done, total_blocks)
         blocks.extend(sec_blocks)
 
         for t in targets:
