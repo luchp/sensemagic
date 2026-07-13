@@ -27,7 +27,7 @@ from pages.mimoshape.analyzer import (
     parse_upload,
 )
 from pages.mimoshape.jobs import JobManager
-from pages.mimoshape.generator import to_wav_bytes
+from pages.mimoshape.generator import to_flac_bytes, to_wav_bytes
 
 prefix = Path(__file__).stem  # "app_mimoshape_file"
 router = APIRouter(prefix=f"/{prefix}", tags=["mimoshape"])
@@ -106,8 +106,8 @@ async def analyze(
             seed=seed,
         )
         data = await file.read()
-        record, fs_used = parse_upload(file.filename or "", data, fs)
-        job_id = jobs.submit(record, fs_used, params)
+        record, fs_used, is_audio = parse_upload(file.filename or "", data, fs)
+        job_id = jobs.submit(record, fs_used, params, is_audio=is_audio)
     except UploadError as ex:
         ctx = _form_context(_safe_params(nfft, nw, num_blocks, seed), fs)
         ctx["standalone"] = standalone
@@ -146,7 +146,7 @@ async def result(request: Request, job_id: str, standalone: bool = True):
     elif job.state != "done":
         ctx["job_id"] = job_id  # early visit: keep polling
     else:
-        ctx.update(_result_context(job.result, job.params))
+        ctx.update(_result_context(job.result, job.params, job.is_audio))
     return _render(request, ctx)
 
 
@@ -162,7 +162,7 @@ def _data_url(payload: bytes, media_type: str) -> str:
     return f"data:{media_type};base64,{base64.b64encode(payload).decode()}"
 
 
-def _result_context(result, params: AnalysisParams):
+def _result_context(result, params: AnalysisParams, is_audio: bool = False):
     nj = result.record.shape[0]
     nfft = params.nfft
     ff = (np.fft.rfftfreq(nfft) * result.fs).tolist()
@@ -184,25 +184,37 @@ def _result_context(result, params: AnalysisParams):
     step = max(1, result.merged.shape[1] // 8192)
     trace = result.merged[:, ::step]
 
-    # downloads: the merged synthesized signal (float32 keeps data URLs lean)
-    npy_buf = io.BytesIO()
-    np.save(npy_buf, result.merged.astype(np.float32))
-    downloads = [
-        ("synth.npy", _data_url(npy_buf.getvalue(), "application/octet-stream")),
-    ]
+    # downloads: the merged synthesized signal. Audio uploads get a
+    # volume-normalised flac (playable, matches the input format); other
+    # uploads (csv/npy) get the raw npy array (float32 keeps data URLs lean).
+    if is_audio:
+        downloads = [
+            (
+                "synth.flac",
+                _data_url(
+                    to_flac_bytes(result.merged, fs=int(result.fs)), "audio/flac"
+                ),
+            ),
+        ]
+    else:
+        npy_buf = io.BytesIO()
+        np.save(npy_buf, result.merged.astype(np.float32))
+        downloads = [
+            ("synth.npy", _data_url(npy_buf.getvalue(), "application/octet-stream")),
+        ]
+        if nj == 1:
+            downloads.append(
+                (
+                    "synth.wav",
+                    _data_url(
+                        to_wav_bytes(result.merged[0], fs=int(result.fs)), "audio/wav"
+                    ),
+                )
+            )
     if result.merged.size <= 2_000_000:  # csv is ~10x bigger; skip when large
         csv_buf = io.BytesIO()
         np.savetxt(csv_buf, result.merged.T, fmt="%.9g", delimiter=",")
         downloads.append(("synth.csv", _data_url(csv_buf.getvalue(), "text/csv")))
-    if nj == 1:
-        downloads.append(
-            (
-                "synth.wav",
-                _data_url(
-                    to_wav_bytes(result.merged[0], fs=int(result.fs)), "audio/wav"
-                ),
-            )
-        )
 
     return {
         "result": {

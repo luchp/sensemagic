@@ -134,6 +134,25 @@ def to_wav_bytes(x: np.ndarray, fs: int = 48000) -> bytes:
     return buf.getvalue()
 
 
+def to_flac_bytes(x: np.ndarray, fs: int = 48000) -> bytes:
+    """16-bit multi/single-channel flac, peak-normalised to 90% full scale.
+
+    ``x`` is (channels, samples). A single global scale factor (rather than
+    one per channel) preserves the relative level between channels.
+    """
+    import io
+
+    import soundfile as sf
+
+    x = np.atleast_2d(x)
+    scale = 0.9 / np.max(np.abs(x))
+    buf = io.BytesIO()
+    sf.write(
+        buf, (x * scale).T.astype(np.float32), int(fs), format="FLAC", subtype="PCM_16"
+    )
+    return buf.getvalue()
+
+
 def to_csv_bytes(x: np.ndarray) -> bytes:
     import io
 

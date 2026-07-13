@@ -24,6 +24,7 @@ class Job:
     id: str
     params: AnalysisParams
     fs: float
+    is_audio: bool = False  # upload was audio -> offer a normalised flac download
     state: str = "queued"  # queued | running | done | error
     done_blocks: int = 0
     total_blocks: int = 0
@@ -38,7 +39,9 @@ class JobManager:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
 
-    def submit(self, record, fs: float, params: AnalysisParams) -> str:
+    def submit(
+        self, record, fs: float, params: AnalysisParams, is_audio: bool = False
+    ) -> str:
         with self._lock:
             self._expire()
             waiting = sum(1 for j in self._jobs.values() if j.state == "queued")
@@ -47,7 +50,7 @@ class JobManager:
                     "the server is busy (too many queued jobs); try again "
                     "in a few minutes"
                 )
-            job = Job(id=uuid.uuid4().hex, params=params, fs=fs)
+            job = Job(id=uuid.uuid4().hex, params=params, fs=fs, is_audio=is_audio)
             self._jobs[job.id] = job
         self._executor.submit(self._run, job, record)
         return job.id

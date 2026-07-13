@@ -37,17 +37,22 @@ class UploadError(ValueError):
     """User-facing problem with the uploaded file or settings."""
 
 
-def parse_upload(filename: str, data: bytes, fs_field: float) -> tuple[np.ndarray, float]:
+def parse_upload(
+    filename: str, data: bytes, fs_field: float
+) -> tuple[np.ndarray, float, bool]:
     """Parse audio/csv/npy bytes into a (channels, samples) float record + fs.
 
     Anything that is not csv/npy is handed to libsndfile (wav, flac, ogg,
     mp3, ...) -- compressed audio uploads much faster. Channels beyond
     MAX_CHANNELS are dropped. fs comes from the audio header, or from
-    ``fs_field`` for csv/npy.
+    ``fs_field`` for csv/npy. Returns whether the upload was an audio file
+    (as opposed to csv/npy), so the result page can offer a matching
+    (normalised) audio download instead of a raw npy dump.
     """
     if len(data) > MAX_UPLOAD_BYTES:
         raise UploadError(f"file exceeds {MAX_UPLOAD_BYTES // 2**20} MB limit")
     name = filename.lower()
+    is_audio = not (name.endswith(".csv") or name.endswith(".txt") or name.endswith(".npy"))
     if name.endswith(".csv") or name.endswith(".txt"):
         record, fs = _parse_csv(data), fs_field
     elif name.endswith(".npy"):
@@ -64,7 +69,7 @@ def parse_upload(filename: str, data: bytes, fs_field: float) -> tuple[np.ndarra
     record = record - np.mean(record, axis=1, keepdims=True)
     if np.any(np.std(record, axis=1) == 0):
         raise UploadError("a channel is constant; cannot normalise")
-    return record, float(fs)
+    return record, float(fs), is_audio
 
 
 def _parse_audio(data: bytes) -> tuple[np.ndarray, float]:
