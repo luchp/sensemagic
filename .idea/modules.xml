@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/sensemagic.iml" filepath="$PROJECT_DIR$/.idea/sensemagic.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/sensemagic-app.iml" filepath="$PROJECT_DIR$/.idea/sensemagic-app.iml" />
     </modules>
   </component>
 </project>

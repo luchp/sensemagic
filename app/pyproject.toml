@@ -1,0 +1,22 @@
+
+[project]
+name = "sensemagic-app"
+version = "0.1.0"
+description = "sensemagic application"
+readme = "../README.md"
+requires-python = ">=3.14"
+dependencies = [
+  "matplotlib",
+  "pint",
+  "fastapi",
+  "python-multipart",
+  "uvicorn",
+  "plotly",
+  "jinja2",
+  "markdown",
+  "pygments",
+  "requests",
+  "soundfile",
+  "mimoshape @ git+https://github.com/luchp/mimoshape",
+  "audioshape @ git+https://github.com/luchp/audioshape",
+]
