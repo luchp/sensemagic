@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+
+{% block title %}Sealed-Box Driver Selection{% endblock %}
+
+{% block max_width %}1300px{% endblock %}
+
+{% block extra_style %}
+        .form-section {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+        }
+        .form-section h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 200px 150px 1fr;
+            gap: 10px;
+            margin: 10px 0;
+            align-items: center;
+        }
+        label {
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="number"], select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .unit {
+            color: #777;
+            font-size: 14px;
+        }
+        .role-row {
+            display: grid;
+            grid-template-columns: 200px 1fr auto;
+            gap: 10px;
+            margin: 10px 0;
+            align-items: center;
+        }
+        .role-row select { width: 100%; }
+        button, .search-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover, .search-btn:hover { background-color: #45a049; }
+        .search-btn { background-color: #2196F3; padding: 8px 16px; }
+        .search-btn:hover { background-color: #0b7dda; }
+        .calc-btn { font-size: 16px; padding: 12px 30px; margin-top: 10px; }
+        .info {
+            background-color: #e7f3fe;
+            border-left: 4px solid #2196F3;
+            padding: 12px;
+            margin: 20px 0;
+        }
+        .error-box {
+            background-color: #fdecea;
+            border-left: 4px solid #d32f2f;
+            padding: 12px;
+            margin: 20px 0;
+        }
+        .pair-box {
+            background-color: #f0fff0;
+            border-left: 4px solid #4CAF50;
+            padding: 12px 15px;
+            margin: 20px 0;
+            font-size: 16px;
+        }
+        .pair-box.flagged {
+            background-color: #fff8e1;
+            border-left-color: #ff9800;
+        }
+        .summary-table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 15px 0;
+            font-size: 13px;
+        }
+        .summary-table th, .summary-table td {
+            border: 1px solid #ddd;
+            padding: 6px 10px;
+            text-align: right;
+        }
+        .summary-table th { background: #f0f0f0; }
+        .summary-table td:first-child, .summary-table th:first-child,
+        .summary-table td:nth-child(2), .summary-table th:nth-child(2) {
+            text-align: left;
+        }
+        .flag-ok { color: #2e7d32; font-weight: bold; }
+        .flag-bad { color: #d32f2f; font-weight: bold; }
+        .vituixcad-download {
+            display: inline-block;
+            margin: 15px 0;
+            padding: 10px 20px;
+            background-color: #673ab7;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .vituixcad-download:hover { background-color: #5e35b1; }
+        .plots { margin-top: 10px; }
+{% endblock %}
+
+{% block content %}
+    <div class="container">
+        <h1>&#127908; Sealed-Box Driver Selection</h1>
+
+        <div class="info">
+            <strong>&#8505;&#65039; About:</strong> Ranks bass drivers for a sealed enclosure from
+            first-principles excursion, Doppler and thermal-power limits at your room and target
+            SPL, assuming half-space (soffit-wall) radiation and a single fixed listening
+            position. A <strong>sub</strong> (mono manifold) covers the band up to the split
+            frequency; an <strong>attack</strong> driver (stereo tower) covers up to the top
+            frequency &mdash; the two are ranked independently, then you pick one of each.
+            {{ num_drivers }} drivers loaded from the bundled VituixCAD database
+            ({{ num_skipped }} rows skipped for missing data). Room pressure-zone corner
+            f<sub>pz</sub> = {{ "%.1f"|format(f_pz) }} Hz for the current room settings.
+        </div>
+
+        {% if errors %}
+        <div class="error-box">
+            <strong>&#9888;&#65039; Cannot calculate:</strong>
+            <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+        </div>
+        {% endif %}
+
+        <form method="get" action="">
+            <div class="form-section">
+                <h3>Room &amp; Target</h3>
+                <div class="form-row">
+                    <label for="v_room">Room volume:</label>
+                    <input type="number" id="v_room" name="v_room" step="0.1" value="{{ v_room }}" required>
+                    <span class="unit">m&sup3;</span>
+                </div>
+                <div class="form-row">
+                    <label for="l_max">Largest room dimension:</label>
+                    <input type="number" id="l_max" name="l_max" step="0.1" value="{{ l_max }}" required>
+                    <span class="unit">m &mdash; sets the pressure-zone corner f<sub>pz</sub> = c / (2 L<sub>max</sub>)</span>
+                </div>
+                <div class="form-row">
+                    <label for="r_listen">Listening distance:</label>
+                    <input type="number" id="r_listen" name="r_listen" step="0.1" value="{{ r_listen }}" required>
+                    <span class="unit">m (to the couch)</span>
+                </div>
+                <div class="form-row">
+                    <label for="target_spl">Target SPL:</label>
+                    <input type="number" id="target_spl" name="target_spl" step="0.5" value="{{ target_spl }}" required>
+                    <span class="unit">dB rms-equivalent, one (mono) source's own level &mdash; no stereo summing credit</span>
+                </div>
+                <div class="form-row">
+                    <label for="distortion_budget_pct">Distortion budget:</label>
+                    <input type="number" id="distortion_budget_pct" name="distortion_budget_pct" step="0.5" value="{{ distortion_budget_pct }}" required>
+                    <span class="unit">% non-correctable HD allowed (D*)</span>
+                </div>
+                <div class="form-row">
+                    <label for="qtc">Target Qtc:</label>
+                    <input type="number" id="qtc" name="qtc" step="0.01" value="{{ qtc }}" required>
+                    <span class="unit">sealed-box alignment</span>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3>Frequency Bands</h3>
+                <div class="form-row">
+                    <label for="f_low">Lowest analysis frequency:</label>
+                    <input type="number" id="f_low" name="f_low" step="1" value="{{ f_low }}" required>
+                    <span class="unit">Hz</span>
+                </div>
+                <div class="form-row">
+                    <label for="f_split">Sub / attack split:</label>
+                    <input type="number" id="f_split" name="f_split" step="1" value="{{ f_split }}" required>
+                    <span class="unit">Hz</span>
+                </div>
+                <div class="form-row">
+                    <label for="f_high">Top of attack band:</label>
+                    <input type="number" id="f_high" name="f_high" step="1" value="{{ f_high }}" required>
+                    <span class="unit">Hz</span>
+                </div>
+                <details>
+                    <summary style="cursor:pointer; color:#555;">Advanced: burst/pulse shape</summary>
+                    <div class="form-row">
+                        <label for="burst_shape">Burst shape factor C:</label>
+                        <input type="number" id="burst_shape" name="burst_shape" step="0.1" value="{{ burst_shape }}" required>
+                        <span class="unit">cosine burst shape (paper's Lemma)</span>
+                    </div>
+                    <div class="form-row">
+                        <label for="burst_headroom">Burst headroom &kappa;:</label>
+                        <input type="number" id="burst_headroom" name="burst_headroom" step="0.1" value="{{ burst_headroom }}" required>
+                        <span class="unit">short-burst power headroom</span>
+                    </div>
+                </details>
+            </div>
+
+            <div class="form-section">
+                <h3>Sub (mono, band [f<sub>low</sub>, f<sub>split</sub>])</h3>
+                <div class="form-row">
+                    <label for="sub_units">Units (identical, manifold):</label>
+                    <input type="number" id="sub_units" name="sub_units" step="1" min="1" value="{{ sub_units }}" required>
+                    <span class="unit"></span>
+                </div>
+                <div class="form-row">
+                    <label>Size window:</label>
+                    <input type="number" name="sub_size_min" step="0.5" value="{{ sub_size_min }}" required style="width:80px">
+                    <span class="unit">to <input type="number" name="sub_size_max" step="0.5" value="{{ sub_size_max }}" required style="width:80px"> inch</span>
+                </div>
+                <div class="role-row">
+                    <label for="sub_driver">Sub driver:</label>
+                    <select id="sub_driver" name="sub_driver">
+                        {% for opt in sub_options %}
+                        <option value="{{ opt.value }}" {% if opt.value == sub_driver %}selected{% endif %}>{{ opt.text }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" name="action" value="search_sub" class="search-btn">&#128269; Search</button>
+                </div>
+                <input type="hidden" name="sub_mode" value="{{ sub_mode }}">
+            </div>
+
+            <div class="form-section">
+                <h3>Attack (stereo, band [f<sub>split</sub>, f<sub>high</sub>])</h3>
+                <div class="form-row">
+                    <label for="attack_units">Units per channel:</label>
+                    <input type="number" id="attack_units" name="attack_units" step="1" min="1" value="{{ attack_units }}" required>
+                    <span class="unit"></span>
+                </div>
+                <div class="form-row">
+                    <label>Size window:</label>
+                    <input type="number" name="attack_size_min" step="0.5" value="{{ attack_size_min }}" required style="width:80px">
+                    <span class="unit">to <input type="number" name="attack_size_max" step="0.5" value="{{ attack_size_max }}" required style="width:80px"> inch</span>
+                </div>
+                <div class="role-row">
+                    <label for="attack_driver">Attack driver:</label>
+                    <select id="attack_driver" name="attack_driver">
+                        {% for opt in attack_options %}
+                        <option value="{{ opt.value }}" {% if opt.value == attack_driver %}selected{% endif %}>{{ opt.text }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" name="action" value="search_attack" class="search-btn">&#128269; Search</button>
+                </div>
+                <input type="hidden" name="attack_mode" value="{{ attack_mode }}">
+            </div>
+
+            <input type="hidden" name="standalone" value="{{ 'true' if standalone else 'false' }}">
+            <button type="submit" name="action" value="calculate" class="calc-btn">&#9654; Calculate</button>
+        </form>
+
+        {% if show_results and (summary_rows or pair_summary) %}
+        <h2>Results</h2>
+
+        {% if pair_summary %}
+        <div class="pair-box {{ '' if pair_summary.feasible else 'flagged' }}">
+            <strong>Pair total non-correctable distortion:</strong>
+            {{ "%.2f"|format(pair_summary.total_pct) }} %
+            {% if not pair_summary.feasible %}&mdash; <span class="flag-bad">one or more feasibility flags, see below</span>{% endif %}
+        </div>
+        {% endif %}
+
+        {% if summary_rows %}
+        <table class="summary-table">
+            <tr>
+                <th>role</th><th>driver</th><th>units</th><th>V<sub>b</sub> [L]</th>
+                <th>F<sub>c</sub> [Hz]</th><th>&xi;<sub>x</sub></th><th>HD %</th>
+                <th>Doppler %</th><th>box %</th><th>total %</th><th>&xi;<sub>P</sub></th><th>status</th>
+            </tr>
+            {% for r in summary_rows %}
+            <tr>
+                <td>{{ r.role }}</td>
+                <td>{{ r.driver }}</td>
+                <td>{{ r.n_units }}</td>
+                <td>{{ "%.1f"|format(r.vb_l) }}</td>
+                <td>{{ "%.1f"|format(r.fc) }}</td>
+                <td>{{ "%.2f"|format(r.xi_x) }}</td>
+                <td>{{ "%.2f"|format(r.hd_pct) }}</td>
+                <td>{{ "%.2f"|format(r.doppler_pct) }}</td>
+                <td>{{ "%.2f"|format(r.box_pct) }}</td>
+                <td>{{ "%.2f"|format(r.total_pct) }}</td>
+                <td>{{ "%.2f"|format(r.xi_p) }}</td>
+                <td style="text-align:left">
+                    {% if r.feasible %}<span class="flag-ok">OK</span>
+                    {% else %}<span class="flag-bad">{{ r.reasons }}</span>{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% endif %}
+
+        {% if vituixcad_download_url %}
+        <a class="vituixcad-download" href="{{ vituixcad_download_url }}" download="driver_selection.zip">
+            &#128190; Download VituixCAD project
+        </a>
+        <p class="unit">
+            Zip with the <code>.vxp</code> project and a driver-database TSV for the
+            driver(s) above. VituixCAD only reads Thiele/Small parameters from its own
+            driver database (not the project file) &mdash; if a driver isn't already in
+            yours, import the TSV first with VituixCAD's Driver Database Manager, then
+            open the project.
+        </p>
+        {% endif %}
+
+        <div class="plots" id="plots-container">
+        {{ plots_html|safe }}
+        </div>
+        {% endif %}
+    </div>
+{% endblock %}

@@ -10,3 +10,4 @@ pygments
 requests
 soundfile
 mimoshape @ git+https://github.com/luchp/mimoshape
+audioshape @ git+https://github.com/luchp/audioshape
