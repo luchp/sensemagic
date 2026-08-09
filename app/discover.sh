@@ -1,6 +1,4 @@
 #!/bin/bash
-# Activate the virtual environment
-source /home/venv/fapi/bin/activate
 
 cd /home/projects
 chown projects * -R
@@ -22,6 +20,6 @@ cd /home/projects/sensemagic/app
 #   ./discover.sh --menu-name "Main Menu"      # Specify WordPress menu by name
 #   ./discover.sh --pip-install                # Install/update dependencies from requirements.txt
 #   ./discover.sh --all                        # Do everything: git pull, pip install, discover, update nginx, WordPress sync (pages + menu), restart supervisor
-python discover.py "$@"
+uv run python discover.py "$@"
 
 
