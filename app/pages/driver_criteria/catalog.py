@@ -28,6 +28,15 @@ ROLE_BANDS = {
     "attack": ("f_split", "f_high", "f_high"),
 }
 
+# role -> number of independently-driven (coherent-signal) channels feeding
+# it: sub is a single shared mono manifold, attack is a stereo tower (L+R).
+# See audioshape.ranking.evaluate()'s docstring: this scales only the
+# acoustic coherent-sum budget, never the per-driver thermal/power budget.
+ROLE_CHANNELS = {
+    "sub": 1,
+    "attack": 2,
+}
+
 
 @lru_cache(maxsize=1)
 def load_drivers(path: str | Path = DEFAULT_DB_PATH) -> ParseResult:
@@ -72,7 +81,8 @@ def ranked_options(drivers: list[Driver], scenario: Scenario, role: str,
     band_low, band_high, doppler_ref = band_for_role(scenario, role)
     evals = rank(drivers, scenario, n_units=n_units,
                 min_size_in=size_min, max_size_in=size_max,
-                band_low=band_low, band_high=band_high, doppler_ref=doppler_ref)
+                band_low=band_low, band_high=band_high, doppler_ref=doppler_ref,
+                n_channels=ROLE_CHANNELS[role], role=role)
     opts = [Option(EMPTY_VALUE, EMPTY_LABEL)]
     for i, ev in enumerate(evals, 1):
         flag = "" if ev.feasible else " [!]"
@@ -97,4 +107,5 @@ def evaluate_role(driver: Driver, scenario: Scenario, role: str,
     band_low, band_high, doppler_ref = band_for_role(scenario, role)
     return evaluate(driver, scenario, n_units=n_units,
                     band_low=band_low, band_high=band_high,
-                    doppler_ref=doppler_ref)
+                    doppler_ref=doppler_ref, n_channels=ROLE_CHANNELS[role],
+                    role=role)

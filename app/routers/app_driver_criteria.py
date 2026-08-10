@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import base64
 import io
+import math
 import zipfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -75,7 +76,8 @@ class FormState:
     v_room: float = 60.0
     l_max: float = 6.0
     r_listen: float = 3.0
-    target_spl: float = 110.0
+    sub_target_spl: float = 115.0
+    attack_target_spl: float = 105.0
     distortion_budget_pct: float = 3.0
     qtc: float = 0.55
     f_low: float = 15.0
@@ -98,7 +100,8 @@ class FormState:
     def scenario(self) -> Scenario:
         return Scenario(
             v_room=self.v_room, l_max=self.l_max, r_listen=self.r_listen,
-            target_spl=self.target_spl,
+            sub_target_spl=self.sub_target_spl,
+            attack_target_spl=self.attack_target_spl,
             distortion_budget=self.distortion_budget_pct / 100.0,
             qtc=self.qtc, f_low=self.f_low, f_split=self.f_split,
             f_high=self.f_high, burst_shape=self.burst_shape,
@@ -109,7 +112,8 @@ def form_state(
     v_room: float = Query(60.0, gt=0),
     l_max: float = Query(6.0, gt=0),
     r_listen: float = Query(3.0, gt=0),
-    target_spl: float = Query(110.0),
+    sub_target_spl: float = Query(115.0),
+    attack_target_spl: float = Query(105.0),
     distortion_budget_pct: float = Query(3.0, gt=0, lt=100),
     qtc: float = Query(0.55, gt=0),
     f_low: float = Query(15.0, gt=0),
@@ -130,7 +134,8 @@ def form_state(
     action: str = Query(""),
 ) -> FormState:
     return FormState(
-        v_room=v_room, l_max=l_max, r_listen=r_listen, target_spl=target_spl,
+        v_room=v_room, l_max=l_max, r_listen=r_listen,
+        sub_target_spl=sub_target_spl, attack_target_spl=attack_target_spl,
         distortion_budget_pct=distortion_budget_pct, qtc=qtc,
         f_low=f_low, f_split=f_split, f_high=f_high,
         burst_shape=burst_shape, burst_headroom=burst_headroom,
@@ -150,30 +155,53 @@ def _freq_axis(band_low: float, band_high: float, n: int = 400) -> np.ndarray:
     return np.geomspace(band_low * 0.7, band_high, n)
 
 
-def _room_gain_factor(f: float, sc: Scenario) -> float:
+def _room_gain_factor(f: float, sc: Scenario, role: str) -> float:
     """Linear pressure gain of the room relative to free half-space radiation
     at the listening distance (>= 1 below f_pz, 1 above)."""
     w = 2.0 * np.pi * f
-    v_radiation = (np.sqrt(2.0) * sc.target_pressure * 2.0 * np.pi
+    v_radiation = (np.sqrt(2.0) * sc.target_pressure(role) * 2.0 * np.pi
                    * sc.r_listen / (physics.RHO0 * w * w))
-    return v_radiation / sc.demand_volume(f)
+    return v_radiation / sc.demand_volume(f, role)
+
+
+def _add_notes_annotation(fig: go.Figure, ev: Evaluation) -> None:
+    """Surface any non-blocking Evaluation.notes (e.g. the large-box + EQ
+    fallback used when ideal Fc-at-target-corner alignment is geometrically
+    unreachable, see MAX_VB_VAS_RATIO in audioshape.ranking) as a small
+    caveat annotation in the lower-left corner, distinct from the blocking
+    `reasons` that make a driver infeasible."""
+    if not ev.notes:
+        return
+    fig.add_annotation(
+        text="note: " + " / ".join(ev.notes),
+        xref="paper", yref="paper", x=0.01, y=0.01,
+        xanchor="left", yanchor="bottom", showarrow=False,
+        font=dict(size=9, color="firebrick"), align="left",
+    )
 
 
 def spl_figure(ev: Evaluation, band_low: float, band_high: float) -> go.Figure:
     """Achievable SPL at the listening position vs frequency, over this
     role's own band: sine and burst (pulse) excursion ceilings, thermal
     ceiling (driver Pmax, with EQ tax below Fc), all including room
-    pressure-zone gain; target line and f_pz / Fc / f_x markers."""
+    pressure-zone gain; target line and f_pz / Fc / f_x markers.
+
+    Ceilings reflect the *acoustic* coherent sum across both n_units
+    (manifold) and ev.n_channels (e.g. stereo L+R on correlated/mono
+    content) -- see audioshape.ranking.evaluate()'s docstring: this is a
+    real coherent-array gain (A9), not a stereo-summing "credit"."""
     sc, d, boxed = ev.scenario, ev.driver, ev.boxed
     f = _freq_axis(band_low, band_high)
+    vd_acoustic_total = ev.n_channels * boxed.vd_total
+    array_gain_db = 20.0 * np.log10(boxed.n_units * ev.n_channels)
 
-    v_dem = np.array([sc.demand_volume(x) for x in f])
-    spl_sine = sc.target_spl + 20.0 * np.log10(boxed.vd_total / v_dem)
+    v_dem = np.array([sc.demand_volume(x, ev.role) for x in f])
+    spl_sine = sc.target_spl_for(ev.role) + 20.0 * np.log10(vd_acoustic_total / v_dem)
     spl_burst = spl_sine - 20.0 * np.log10(sc.burst_shape)
 
-    spl_pb = physics.spl_thermal_ceiling(d.eta0, d.p_max, sc.r_listen) + boxed.spl_gain_db()
+    spl_pb = physics.spl_thermal_ceiling(d.eta0, d.p_max, sc.r_listen) + array_gain_db
     tax = np.array([physics.eq_tax_power(x, 1.0, boxed.wc, d.sigma_m) for x in f])
-    room = np.array([20.0 * np.log10(_room_gain_factor(x, sc)) for x in f])
+    room = np.array([20.0 * np.log10(_room_gain_factor(x, sc, ev.role)) for x in f])
     spl_thermal = spl_pb - 10.0 * np.log10(tax) + room
 
     fig = go.Figure()
@@ -185,8 +213,8 @@ def spl_figure(ev: Evaluation, band_low: float, band_high: float) -> go.Figure:
     fig.add_trace(go.Scatter(x=f.tolist(), y=spl_thermal.tolist(), mode="lines",
                              name="thermal ceiling (driver P_max, EQ tax)",
                              line=dict(width=2, dash="dashdot")))
-    fig.add_hline(y=sc.target_spl, line=dict(color="black", width=1),
-                 annotation_text=f"target {sc.target_spl:g} dB",
+    fig.add_hline(y=sc.target_spl_for(ev.role), line=dict(color="black", width=1),
+                 annotation_text=f"target {sc.target_spl_for(ev.role):g} dB",
                  annotation_position="bottom right")
 
     for x, name in ((sc.f_pz, "f_pz"), (boxed.fc, "F_c"), (ev.f_x, "f_x")):
@@ -195,16 +223,22 @@ def spl_figure(ev: Evaluation, band_low: float, band_high: float) -> go.Figure:
                          annotation_text=name, annotation_position="top")
 
     fig.update_layout(
-        xaxis_type="log", xaxis_title="frequency [Hz]",
+        # Explicit log-space range: add_vline's autorange doesn't account for
+        # log axes, so without this the vline shapes blow the range out to
+        # ~1e20+ (Plotly bug: shape x/y treated as linear during autorange).
+        xaxis_type="log",
+        xaxis_range=[math.log10(f[0]), math.log10(f[-1])],
+        xaxis_title="frequency [Hz]",
         yaxis_title=f"SPL at {sc.r_listen:g} m [dB]",
-        yaxis_range=[sc.target_spl - 25, None],
+        yaxis_range=[sc.target_spl_for(ev.role) - 25, None],
         title=f"{d.label()} \u2014 {boxed.n_units}x in {boxed.vb*1e3:.0f} L "
-              f"(Q<sub>tc</sub>={sc.qtc:g}, F<sub>c</sub>={boxed.fc:.1f} Hz)",
+              f"(Q<sub>tc</sub>={boxed.qtc:g}, F<sub>c</sub>={boxed.fc:.1f} Hz)",
         template="plotly_white", height=430,
         margin=dict(t=60, b=40),
         legend=dict(x=0.99, y=0.01, xanchor="right", yanchor="bottom",
                    bgcolor="rgba(255,255,255,0.7)"),
     )
+    _add_notes_annotation(fig, ev)
     return fig
 
 
@@ -213,17 +247,24 @@ def distortion_figure(ev: Evaluation, band_low: float, band_high: float,
     """Predicted non-correctable distortion vs frequency at the target SPL,
     over this role's own band: motor/suspension HD, Doppler IM onto this
     role's own top-of-band reference, box air-spring HD2, and their sum,
-    against the distortion budget D*."""
+    against the distortion budget D*.
+
+    Mirrors audioshape.ranking.evaluate(): xi_x/hd/doppler use the acoustic
+    coherent sum across n_units and ev.n_channels; box_hd2's per-unit demand
+    divides by that same acoustic total (n_units * n_channels), never
+    n_units alone -- no thermal/power quantity is plotted here."""
     sc, d, boxed = ev.scenario, ev.driver, ev.boxed
     f = _freq_axis(band_low, band_high)
+    n_acoustic = boxed.n_units * ev.n_channels
+    vd_acoustic_total = ev.n_channels * boxed.vd_total
 
-    v_dem = np.array([sc.demand_volume(x) for x in f])
-    xi = v_dem / boxed.vd_total
+    v_dem = np.array([sc.demand_volume(x, ev.role) for x in f])
+    xi = v_dem / vd_acoustic_total
     hd = np.array([physics.harmonic_distortion(x) for x in xi])
     x1 = np.minimum(xi, 1.0) * d.xmax
     doppler = np.array([physics.doppler_im(doppler_ref, x) for x in x1])
-    box = np.array([physics.box_hd2(min(v, boxed.n_units * d.vd) / boxed.n_units,
-                                    boxed.vb, d.qts, sc.qtc) for v in v_dem])
+    box = np.array([physics.box_hd2(min(v, n_acoustic * d.vd) / n_acoustic,
+                                    boxed.vb, d.qts, boxed.qtc) for v in v_dem])
     total = hd + doppler + box
 
     fig = go.Figure()
@@ -243,16 +284,24 @@ def distortion_figure(ev: Evaluation, band_low: float, band_high: float,
         fig.add_vline(x=sc.f_pz, line=dict(color="grey", width=1, dash="dot"),
                      annotation_text="f_pz", annotation_position="top")
 
+    y_all = np.concatenate([100 * hd, 100 * doppler, 100 * box, 100 * total,
+                            [100 * sc.distortion_budget]])
     fig.update_layout(
+        # Explicit log-space ranges: add_vline/add_hline's autorange doesn't
+        # account for log axes, so without this the ranges blow out to
+        # ~1e20+ (Plotly bug: shape x/y treated as linear during autorange).
         xaxis_type="log", yaxis_type="log",
+        xaxis_range=[math.log10(f[0]), math.log10(f[-1])],
+        yaxis_range=[math.log10(y_all.min() * 0.7), math.log10(y_all.max() * 1.3)],
         xaxis_title="frequency [Hz]",
-        yaxis_title=f"distortion at {sc.target_spl:g} dB target [%]",
+        yaxis_title=f"distortion at {sc.target_spl_for(ev.role):g} dB target [%]",
         title=f"{d.label()} \u2014 non-correctable distortion, {boxed.n_units} unit(s)",
         template="plotly_white", height=430,
         margin=dict(t=60, b=40),
         legend=dict(x=0.99, y=0.99, xanchor="right", yanchor="top",
                    bgcolor="rgba(255,255,255,0.7)"),
     )
+    _add_notes_annotation(fig, ev)
     return fig
 
 

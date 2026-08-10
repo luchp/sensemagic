@@ -121,8 +121,16 @@
             first-principles excursion, Doppler and thermal-power limits at your room and target
             SPL, assuming half-space (soffit-wall) radiation and a single fixed listening
             position. A <strong>sub</strong> (mono manifold) covers the band up to the split
-            frequency; an <strong>attack</strong> driver (stereo tower) covers up to the top
+            frequency; an <strong>attack</strong> driver (stereo tower, L+R) covers up to the top
             frequency &mdash; the two are ranked independently, then you pick one of each.
+            Target SPL is a <strong>per-driver</strong> level, separately configurable for each
+            role (default 115 dB sub / 105 dB attack, matching THX reference-level peak
+            calibration: LFE channel 10 dB hotter than the mains): the sub's manifold units and
+            the attack driver's two stereo channels are both correlated/common-signal, so they add
+            coherently at the couch (+20 log<sub>10</sub> N, N = units &times; channels) &mdash;
+            e.g. one attack channel at 105 dB plus its stereo twin gives 111 dB at the couch for
+            mono-panned content. Thermal/power headroom, unlike the acoustic sum, never crosses
+            channels: each physical driver still only ever dissipates its own channel's power.
             {{ num_drivers }} drivers loaded from the bundled VituixCAD database
             ({{ num_skipped }} rows skipped for missing data). Room pressure-zone corner
             f<sub>pz</sub> = {{ "%.1f"|format(f_pz) }} Hz for the current room settings.
@@ -154,9 +162,14 @@
                     <span class="unit">m (to the couch)</span>
                 </div>
                 <div class="form-row">
-                    <label for="target_spl">Target SPL:</label>
-                    <input type="number" id="target_spl" name="target_spl" step="0.5" value="{{ target_spl }}" required>
-                    <span class="unit">dB rms-equivalent, one (mono) source's own level &mdash; no stereo summing credit</span>
+                    <label for="sub_target_spl">Sub target SPL:</label>
+                    <input type="number" id="sub_target_spl" name="sub_target_spl" step="0.5" value="{{ sub_target_spl }}" required>
+                    <span class="unit">dB rms-equivalent, per driver (THX LFE reference: 115 dB peak) &mdash; correlated manifold units add coherently on top of this (+20log&#8321;&#8320;N)</span>
+                </div>
+                <div class="form-row">
+                    <label for="attack_target_spl">Attack target SPL:</label>
+                    <input type="number" id="attack_target_spl" name="attack_target_spl" step="0.5" value="{{ attack_target_spl }}" required>
+                    <span class="unit">dB rms-equivalent, per driver (THX main-channel reference: 105 dB peak) &mdash; correlated stereo L+R add coherently on top of this (+20log&#8321;&#8320;N)</span>
                 </div>
                 <div class="form-row">
                     <label for="distortion_budget_pct">Distortion budget:</label>
